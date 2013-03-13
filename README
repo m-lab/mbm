@@ -5,4 +5,6 @@ The m-lab project is home to a number of repositories:
 
 m-lab.analysis: Code used to analyze data collected on M-Lab servers.
 m-lab.libraries: A suite of libraries that simplify connection to, and use of, M-Lab servers.
-m-lab.wiki: The Wiki that can be found at https://code.google.com/p/m-lab/w/list
+m-lab.ns: AppEngine application that provides access to M-Lab servers using various dimensions.
+m-lab.ops: Various scripts and tools used for M-Lab platform operations.
+m-lab.wiki: The Wiki that can be found at https://code.google.com/p/m-lab/w/list.
