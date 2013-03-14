@@ -33,15 +33,13 @@ endif()
 include_directories(
 	${PROJECT_SOURCE_DIR}/include
 	${MLAB_LIBRARIES_ROOT}/include
-	#${JSONCPP_ROOT}/include
 	${GTEST_ROOT}/include)
 link_directories(
 	${MLAB_LIBRARIES_ROOT}/lib)
-	#${JSONCPP_ROOT}/lib)
 
 file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
-add_executable(mbm ${SRC_FILES})
-target_link_libraries(mbm mlab json-cpp)
+add_executable(mbm_server ${SRC_FILES})
+target_link_libraries(mbm_server mlab) 
 
