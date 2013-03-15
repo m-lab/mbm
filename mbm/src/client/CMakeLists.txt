@@ -6,7 +6,7 @@ else()
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the build type.")
 endif()
 
-project(mbm_server)
+project(mbm_client)
 
 set(PROJECT_ROOT_DIR ${PROJECT_SOURCE_DIR}/../..)
 
@@ -35,12 +35,11 @@ include_directories(
 	${MLAB_LIBRARIES_ROOT}/include
 	${GTEST_ROOT}/include)
 link_directories(
-        ${PROJECT_ROOT_DIR}/lib
+	${PROJECT_ROOT_DIR}/lib
 	${MLAB_LIBRARIES_ROOT}/lib)
 
 file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
-add_executable(mbm_server ${SRC_FILES})
-target_link_libraries(mbm_server mlab mbm) 
-
+add_executable(mbm_client ${SRC_FILES})
+target_link_libraries(mbm_client mlab mbm) 
