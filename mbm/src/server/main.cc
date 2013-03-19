@@ -27,7 +27,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s, uint32_t secs) {
   uint32_t bytes_per_chunk = total_num_bytes / num_chunks;
 
   std::string chunk_data(bytes_per_chunk, 'b');
-  
+
   for (uint32_t i = 0; i < num_chunks; ++i) {
     for (uint32_t i = 0; i < bytes_per_chunk; ++i)
       chunk_data[i] = static_cast<char>(rand() % 255);
@@ -40,7 +40,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s, uint32_t secs) {
   struct tcp_info tcp_info;
   socklen_t tcp_info_len = sizeof(tcp_info);
   if (getsockopt(socket->raw(), IPPROTO_TCP, TCP_INFO, &tcp_info,
-          &tcp_info_len) == -1) {
+                 &tcp_info_len) == -1) {
     std::cerr << "Failed to get tcp_info: " << strerror(errno) <<
                  "[" << errno << "]\n";
   } else {
@@ -51,7 +51,12 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s, uint32_t secs) {
 }
 
 int main(int argc, const char* argv[]) {
-  scoped_ptr<mlab::ServerSocket> socket(mlab::ServerSocket::CreateOrDie(4242));
+  if (argc != 2) {
+    std::cerr << "Usage: " << argv[0] << " <port>\n";
+    return 1;
+  }
+  scoped_ptr<mlab::ServerSocket> socket(
+      mlab::ServerSocket::CreateOrDie(atoi(argv[1])));
   socket->Select();
   socket->Accept();
 
