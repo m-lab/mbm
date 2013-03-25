@@ -2,6 +2,7 @@
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
 #include "mlab/client_socket.h"
+#include "mlab/mlab.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -14,11 +15,14 @@ int main(int argc, const char* argv[]) {
     return 1;
   }
 
+  mlab::Initialize("mbm_client", MBM_VERSION);
+  mlab::SetLogSeverity(mlab::WARNING);
+
   mlab::Host server(argv[1]);
   scoped_ptr<mlab::ClientSocket> socket(
       mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
 
-  const Config config(1024, 100 * 1024, 10);
+  const Config config(1024, 100 * 1024);
   socket->Send(config.AsString());
 
   // Expect test to start now. Server drives the test by picking a CBR and
