@@ -43,4 +43,4 @@ file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_executable(mbm_server ${SRC_FILES})
-target_link_libraries(mbm_server mlab mbm pcap rt json-cpp)
+target_link_libraries(mbm_server mlab mbm ${PCAP_LIBRARIES} rt json-cpp)
