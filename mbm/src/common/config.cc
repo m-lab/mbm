@@ -1,10 +1,10 @@
 #include "common/config.h"
 
-#include <sstream>
-#include <string>
-
 #include <assert.h>
 #include <stdint.h>
+
+#include <sstream>
+#include <string>
 
 namespace {
 const std::string delimiter = ":";
@@ -29,7 +29,7 @@ void Config::FromString(const std::string& str) {
   std::string::size_type pos = str.find_first_of(delimiter, last_pos);
   std::istringstream(str.substr(last_pos, pos - last_pos)) >>
       low_cbr_kb_s;
-  
+
   last_pos = str.find_first_not_of(delimiter, pos);
   pos = str.find_first_of(delimiter, last_pos);
   std::istringstream(str.substr(last_pos, pos - last_pos)) >>

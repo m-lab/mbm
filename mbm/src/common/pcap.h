@@ -1,10 +1,10 @@
 #ifndef COMMON_PCAP_H
 #define COMMON_PCAP_H
 
-#include <string>
-
 #include <pcap.h>
 #include <stdint.h>
+
+#include <string>
 
 namespace mbm {
 namespace pcap {

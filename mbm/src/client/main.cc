@@ -1,13 +1,13 @@
+#include <assert.h>
+#include <stdlib.h>
+
+#include <iostream>
+
 #include "common/config.h"
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
 #include "mlab/client_socket.h"
 #include "mlab/mlab.h"
-
-#include <assert.h>
-#include <stdlib.h>
-
-#include <iostream>
 
 int main(int argc, const char* argv[]) {
   if (argc != 3) {

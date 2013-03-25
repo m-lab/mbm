@@ -1,8 +1,8 @@
 #include "common/pcap.h"
 
-#include <iostream>
-
 #include <assert.h>
+
+#include <iostream>
 
 namespace mbm {
 namespace pcap {

@@ -1,8 +1,3 @@
-#include <iostream>
-#include <map>
-#include <string>
-#include <sstream>
-
 #include <assert.h>
 #include <errno.h>
 #include <netinet/ip.h>
@@ -14,6 +9,11 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <iostream>
+#include <map>
+#include <string>
+#include <sstream>
 
 #include "common/config.h"
 #include "common/constants.h"
@@ -68,7 +68,7 @@ void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
   // If the sequence number is a duplicate, count it as lost.
   if (sequence_nos.insert(tcp_header->seq).second == false)
     ++lost_packets;
-  //std::cout << "[PCAP] " << tcp_header->seq << "\n";
+  // std::cout << "[PCAP] " << tcp_header->seq << "\n";
 }
 
 double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
@@ -90,7 +90,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::string chunk_data(bytes_per_chunk, 'b');
 
   uint32_t packets_sent = 0;
-  while(packets_sent < TOTAL_PACKETS_TO_SEND) {
+  while (packets_sent < TOTAL_PACKETS_TO_SEND) {
   //  std::cout << '.' << std::flush;
     uint32_t start_time = get_time_ns();
 
@@ -133,7 +133,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
 
-  return (double) lost_packets / packets_sent;
+  return static_cast<double>(lost_packets) / packets_sent;
 }
 
 // Utility class to send EOL and shutdown pcap before exit.
