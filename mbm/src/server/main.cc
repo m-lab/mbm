@@ -23,7 +23,7 @@
 #include "mlab/server_socket.h"
 
 #define PACKETS_PER_CHUNK 3
-#define TOTAL_PACKETS_TO_SEND 100
+#define TOTAL_PACKETS_TO_SEND 500
 
 namespace mbm {
 
@@ -106,14 +106,14 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
     // TODO(dominic): How can we capture but retain high CBR?
     pcap::Capture(PACKETS_PER_CHUNK, pcap_callback);
 
-    std::cout << "." << std::flush;
-
     // If we have time left over, sleep the remainder.
     uint32_t end_time = get_time_ns();
     uint32_t time_taken_to_send_ns = end_time - start_time;
     int32_t left_over_ns = time_per_chunk_ns - time_taken_to_send_ns;
 
     if (left_over_ns > 0) {
+      std::cout << "." << std::flush;
+
       struct timespec sleep_req = {left_over_ns / 1000000000,
                                    left_over_ns % 1000000000};
       struct timespec sleep_rem;
@@ -123,9 +123,8 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
         slept = nanosleep(&sleep_rem, &sleep_rem);
       }
     } else {
-      std::cout << "Warning: Took longer to send than we budgeted: " <<
-                   time_per_chunk_ns << " ns vs " << time_taken_to_send_ns <<
-                   " ns\n";
+      // Warning: Took longer to send than we budgeted.
+      std::cout << "o" << std::flush;
     }
   }
   std::cout << "\n";

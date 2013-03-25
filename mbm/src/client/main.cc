@@ -33,8 +33,8 @@ int main(int argc, const char* argv[]) {
   std::string recv = socket->Receive(chunk_len);
   while (recv.find(END_OF_LINE) == std::string::npos) {
     std::cout << "." << std::flush;
-    if (recv.empty())
-      break;
+//    if (recv.empty())
+//      break;
     recv = socket->Receive(chunk_len);
   }
   std::cout << "\n";
