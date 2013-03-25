@@ -5,6 +5,8 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <netinet/ip.h>
+#include <netinet/if_ether.h>
 #include <netinet/tcp.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -15,6 +17,7 @@
 
 #include "common/config.h"
 #include "common/constants.h"
+#include "common/pcap.h"
 #include "common/scoped_ptr.h"
 #include "mlab/mlab.h"
 #include "mlab/server_socket.h"
@@ -22,12 +25,10 @@
 #define PACKETS_PER_CHUNK 3
 #define TOTAL_PACKETS_TO_SEND 100
 
-void GetTCPInfo(const mlab::Socket* socket, struct tcp_info* tcp_info) {
-  socklen_t tcp_info_len = sizeof(tcp_info);
-  assert(getsockopt(socket->raw(), IPPROTO_TCP, TCP_INFO,
-                    tcp_info, &tcp_info_len) != -1);
-  (void) tcp_info_len;
-}
+namespace mbm {
+
+std::set<uint32_t> sequence_nos;
+uint32_t lost_packets = 0;
 
 uint32_t get_time_ns() {
   struct timespec time;
@@ -35,11 +36,46 @@ uint32_t get_time_ns() {
   return time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
+void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
+                   const u_char* packet) {
+  size_t packet_len = header->len;
+  if (packet_len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
+    std::cerr << "X";
+    return;
+  }
+  const struct iphdr* ip = reinterpret_cast<const struct iphdr*>(
+      packet + sizeof(struct ethhdr));
+  packet_len -= sizeof(struct ethhdr);
+  size_t ip_header_len = ip->ihl * 4;
+  if (packet_len < ip_header_len) {
+    std::cerr << "X";
+    return;
+  }
+
+  if (ip->protocol != IPPROTO_TCP) {
+    std::cerr << "P";
+    return;
+  }
+
+  const struct tcphdr* tcp_header = reinterpret_cast<const struct tcphdr*>(
+      packet + sizeof(struct ethhdr) + ip_header_len);
+  packet_len -= ip_header_len;
+  if (packet_len < sizeof(tcp_header)) {
+    std::cerr << "X";
+    return;
+  }
+
+  // If the sequence number is a duplicate, count it as lost.
+  if (sequence_nos.insert(tcp_header->seq).second == false)
+    ++lost_packets;
+  //std::cout << "[PCAP] " << tcp_header->seq << "\n";
+}
+
 double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::cout << "Running CBR at " << cbr_kb_s << "\n";
 
-  struct tcp_info tcp_info;
-  GetTCPInfo(socket, &tcp_info);
+  sequence_nos.clear();
+  lost_packets = 0;
 
   // TODO(dominic): Should we tell the client the |bytes_per_chunk| so they know
   // how much to ask for on every tick?
@@ -67,6 +103,9 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
     socket->Send(chunk_data);
     packets_sent += PACKETS_PER_CHUNK;
 
+    // TODO(dominic): How can we capture but retain high CBR?
+    pcap::Capture(PACKETS_PER_CHUNK, pcap_callback);
+
     std::cout << "." << std::flush;
 
     // If we have time left over, sleep the remainder.
@@ -91,16 +130,31 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   }
   std::cout << "\n";
 
-  GetTCPInfo(socket, &tcp_info);
-  std::cout << "  retrans: " << tcp_info.tcpi_retrans << "\n";
-  std::cout << "  lost: " << tcp_info.tcpi_lost << "\n";
-  std::cout << "  retransmits: " << (uint32_t) tcp_info.tcpi_retransmits << "\n";
-  std::cout << "  total_retrans: " << tcp_info.tcpi_total_retrans << "\n";
+  std::cout << "  lost: " << lost_packets << "\n";
+  std::cout << "  sent: " << packets_sent << "\n";
 
-  return (double) tcp_info.tcpi_retransmits / packets_sent;
+  return (double) lost_packets / packets_sent;
 }
 
+// Utility class to send EOL and shutdown pcap before exit.
+class CleanShutdown {
+ public:
+  explicit CleanShutdown(const mlab::Socket* socket)
+      : socket_(socket) {}
+  ~CleanShutdown() {
+    socket_->Send(END_OF_LINE);
+    pcap::Shutdown();
+  }
+
+ private:
+  scoped_ptr<const mlab::Socket> socket_;
+};
+
+}  // namespace mbm
+
 int main(int argc, const char* argv[]) {
+  using namespace mbm;
+
   if (argc != 2) {
     std::cerr << "Usage: " << argv[0] << " <port>\n";
     return 1;
@@ -109,8 +163,13 @@ int main(int argc, const char* argv[]) {
   mlab::Initialize("mbm_server", MBM_VERSION);
   mlab::SetLogSeverity(mlab::VERBOSE);
 
-  scoped_ptr<mlab::ServerSocket> socket(
-      mlab::ServerSocket::CreateOrDie(atoi(argv[1])));
+  const char* port = argv[1];
+  // TODO(dominic): Either findalldevs or do something to encourage this device
+  // to be correct.
+  pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
+
+  mlab::ServerSocket* socket = mlab::ServerSocket::CreateOrDie(atoi(port));
+  CleanShutdown shutdown(socket);
   socket->Select();
   socket->Accept();
 
@@ -124,23 +183,21 @@ int main(int argc, const char* argv[]) {
 
   // The |loss_threshold| allows us to find the CBR that gives loss of a certain
   // percentage.
-  double loss_threshold = 0.0;
+  double loss_threshold = 1.0;
 
-  double loss_rate = RunCBR(socket.get(), config.low_cbr_kb_s);
+  double loss_rate = RunCBR(socket, config.low_cbr_kb_s);
   if (loss_rate > loss_threshold) {
     std::cerr << "CBR of " << config.low_cbr_kb_s << " is already too lossy " <<
                  "(" << loss_rate * 100 << "%)\n";
     std::cerr << "Please provide a lower range to try.\n";
-    socket->Send(END_OF_LINE);
     return 1;
   }
 
-  loss_rate = RunCBR(socket.get(), config.high_cbr_kb_s);
+  loss_rate = RunCBR(socket, config.high_cbr_kb_s);
   if (loss_rate <= loss_threshold) {
     std::cerr << "CBR of " << config.high_cbr_kb_s << " is not lossy " <<
                  "(" << loss_rate * 100 << "%)\n";
     std::cerr << "Please provide a higher range to try.\n";
-    socket->Send(END_OF_LINE);
     return 1;
   }
 
@@ -151,7 +208,7 @@ int main(int argc, const char* argv[]) {
   std::map<uint32_t, double> cbr_loss_map;
   while (low < high) {
     uint32_t test_cbr = low + (high - low) / 2;
-    loss_rate = RunCBR(socket.get(), test_cbr);
+    loss_rate = RunCBR(socket, test_cbr);
     cbr_loss_map.insert(std::make_pair(test_cbr, loss_rate));
     if (loss_rate < loss_threshold)
       low = test_cbr;
@@ -161,13 +218,12 @@ int main(int argc, const char* argv[]) {
       break;
   }
 
-  socket->Send(END_OF_LINE);
-
   // Report the results.
   std::cout << "CBR, loss_rate\n";
   for (std::map<uint32_t, double>::const_iterator it = cbr_loss_map.begin();
        it != cbr_loss_map.end(); ++it) {
     std::cout << it->first << ", " << it->second * 100 << "%%\n";
   }
+
   return 0;
 }

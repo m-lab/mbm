@@ -29,7 +29,14 @@ int main(int argc, const char* argv[]) {
   // sending data at that rate while counting losses. All we need to do is
   // receive and dump the data.
   // TODO(dominic): Determine best size chunk to receive.
-  while (socket->Receive(10 * 1024).find(END_OF_LINE) == std::string::npos) {
+  const size_t chunk_len = 10 * 1024;
+  std::string recv = socket->Receive(chunk_len);
+  while (recv.find(END_OF_LINE) == std::string::npos) {
+    std::cout << "." << std::flush;
+    if (recv.empty())
+      break;
+    recv = socket->Receive(chunk_len);
   }
+  std::cout << "\n";
   return 0;
 }
