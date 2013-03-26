@@ -88,9 +88,9 @@ ELSE(PCAP_INCLUDE_DIRS)
 ENDIF(PCAP_INCLUDE_DIRS)
 
 IF(PCAP_LIBRARIES)
-  MESSAGE(STATUS "Pcap library set to ${PCAP_LIBRARIES}")
+  MESSAGE(STATUS " Pcap library set to ${PCAP_LIBRARIES}")
 ELSE(PCAP_LIBRARIES)
-  MESSAGE(FATAL "Pcap library cannot be found")
+  MESSAGE(FATAL " Pcap library cannot be found")
 ENDIF(PCAP_LIBRARIES)
 
 #Functions
