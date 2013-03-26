@@ -1,8 +1,13 @@
 #include <assert.h>
 #include <errno.h>
+#ifdef USE_PCAP
 #include <netinet/ip.h>
 #include <netinet/if_ether.h>
+#endif  // USE_PCAP
 #include <netinet/tcp.h>
+#ifdef USE_PCAP
+#include <pcap.h>
+#endif
 #include <signal.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -17,7 +22,9 @@
 
 #include "common/config.h"
 #include "common/constants.h"
+#ifdef USE_PCAP
 #include "common/pcap.h"
+#endif  // USE_PCAP
 #include "common/scoped_ptr.h"
 #include "mlab/mlab.h"
 #include "mlab/server_socket.h"
@@ -27,7 +34,10 @@
 
 namespace mbm {
 
+#ifdef USE_PCAP
 std::set<uint32_t> sequence_nos;
+#endif  // USE_PCAP
+
 uint32_t lost_packets = 0;
 
 uint32_t get_time_ns() {
@@ -36,6 +46,7 @@ uint32_t get_time_ns() {
   return time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
+#ifdef USE_PCAP
 void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
                    const u_char* packet) {
   size_t packet_len = header->len;
@@ -70,11 +81,14 @@ void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
     ++lost_packets;
   // std::cout << "[PCAP] " << tcp_header->seq << "\n";
 }
+#endif  // USE_PCAP
 
 double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::cout << "Running CBR at " << cbr_kb_s << "\n";
 
+#ifdef USE_PCAP
   sequence_nos.clear();
+#endif  // USE_PCAP
   lost_packets = 0;
 
   // TODO(dominic): Should we tell the client the |bytes_per_chunk| so they know
@@ -103,8 +117,10 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
     socket->Send(chunk_data);
     packets_sent += PACKETS_PER_CHUNK;
 
+#ifdef USE_PCAP
     // TODO(dominic): How can we capture but retain high CBR?
     pcap::Capture(PACKETS_PER_CHUNK, pcap_callback);
+#endif  // USE_PCAP
 
     // If we have time left over, sleep the remainder.
     uint32_t end_time = get_time_ns();
@@ -142,7 +158,9 @@ class CleanShutdown {
       : socket_(socket) {}
   ~CleanShutdown() {
     socket_->Send(END_OF_LINE);
+#ifdef USE_PCAP
     pcap::Shutdown();
+#endif  // USE_PCAP
   }
 
  private:
@@ -163,9 +181,11 @@ int main(int argc, const char* argv[]) {
   mlab::SetLogSeverity(mlab::VERBOSE);
 
   const char* port = argv[1];
+#ifdef USE_PCAP
   // TODO(dominic): Either findalldevs or do something to encourage this device
   // to be correct.
   pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
+#endif  // USE_PCAP
 
   mlab::ServerSocket* socket = mlab::ServerSocket::CreateOrDie(atoi(port));
   CleanShutdown shutdown(socket);
