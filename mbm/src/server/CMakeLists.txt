@@ -24,6 +24,14 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-strict-aliasing")
 
 add_definitions(-DOS_LINUX)
+if(DEFINED USE_PCAP AND USE_PCAP)
+	add_definitions(-DUSE_PCAP)
+	set(MBM_PCAP_INCLUDE_DIRS ${PCAP_INCLUDE_DIRS})
+	set(MBM_PCAP_LIBRARIES ${PCAP_LIBRARIES})
+else()
+	set(MBM_PCAP_INCLUDE_DIRS "")
+	set(MBM_PCAP_LIBRARIES "")
+endif()
 
 # Set CPU
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86")
@@ -33,7 +41,8 @@ endif()
 include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
-	${GTEST_ROOT}/include)
+	${GTEST_ROOT}/include
+	${MBM_PCAP_INCLUDE_DIRS})
 link_directories(
         ${PROJECT_ROOT_DIR}/lib
 	${MLAB_LIBRARIES_ROOT}/lib
@@ -43,4 +52,4 @@ file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_executable(mbm_server ${SRC_FILES})
-target_link_libraries(mbm_server mlab mbm ${PCAP_LIBRARIES} rt json-cpp)
+target_link_libraries(mbm_server mlab mbm ${MBM_PCAP_LIBRARIES} rt json-cpp)

@@ -25,7 +25,16 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86")
 	add_definitions(-DARCH_X86)
 endif()
 
-include_directories(${PROJECT_ROOT_DIR}/src)
+if(DEFINED USE_PCAP AND USE_PCAP)
+	add_definitions(-DUSE_PCAP)
+	set(MBM_PCAP_INCLUDE_DIRS ${PCAP_INCLUDE_DIRS})
+else()
+	set(MBM_PCAP_INCLUDE_DIRS "")
+endif()
+
+include_directories(
+	${PROJECT_ROOT_DIR}/src
+	${MBM_PCAP_INCLUDE_DIRS})
 
 file(GLOB_RECURSE SRC_FILES *.cc)
 

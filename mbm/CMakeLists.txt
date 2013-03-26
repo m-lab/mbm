@@ -4,7 +4,9 @@ project (mbm)
 set(MLAB_LIBRARIES_ROOT ${PROJECT_SOURCE_DIR}/third_party/m-lab.libraries/trunk)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR})
 
-find_package(PCAP REQUIRED)
+if(DEFINED USE_PCAP AND USE_PCAP)
+	find_package(PCAP REQUIRED)
+endif()
 
 add_subdirectory(${MLAB_LIBRARIES_ROOT})
 add_subdirectory(src/common)

@@ -1,3 +1,5 @@
+#ifdef USE_PCAP
+
 #include "common/pcap.h"
 
 #include <assert.h>
@@ -64,3 +66,5 @@ void Shutdown() {
 
 }  // namespace pcap
 }  // namespace mbm
+
+#endif  // USE_PCAP
