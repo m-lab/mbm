@@ -36,11 +36,11 @@ include_directories(
 	${GTEST_ROOT}/include)
 link_directories(
         ${PROJECT_ROOT_DIR}/lib
-	${MLAB_LIBRARIES_ROOT}/lib)
+	${MLAB_LIBRARIES_ROOT}/lib
+        ${JSONCPP_ROOT}/lib)
 
 file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_executable(mbm_server ${SRC_FILES})
-target_link_libraries(mbm_server mlab mbm) 
-
+target_link_libraries(mbm_server mlab mbm ${PCAP_LIBRARIES} rt json-cpp)
