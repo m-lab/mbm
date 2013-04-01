@@ -14,6 +14,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/lib)
 
+set(MLAB_LIBRARIES_ROOT ${PROJECT_ROOT_DIR}/third_party/m-lab.libraries/trunk)
+set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.6.0)
+
 set(CMAKE_CXX_FLAGS "-Wall -Werror -fPIC -fno-exceptions -fno-rtti")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-strict-aliasing")
@@ -32,12 +35,23 @@ else()
 	set(MBM_PCAP_INCLUDE_DIRS "")
 endif()
 
+if(DEFINED USE_WEB100 AND USE_WEB100)
+	add_definitions(-DUSE_WEB100)
+	set(MBM_WEB100_INCLUDE_DIRS ${WEB100_INCLUDE_DIRS})
+	set(MBM_WEB100_LIBRARIES ${WEB100_LIBRARIES})
+else()
+	set(MBM_WEB100_INCLUDE_DIRS "")
+	set(MBM_WEB100_LIBRARIES "")
+endif()
+
 include_directories(
 	${PROJECT_ROOT_DIR}/src
-	${MBM_PCAP_INCLUDE_DIRS})
+	${MLAB_LIBRARIES_ROOT}/include
+	${GTEST_ROOT}/include
+	${MBM_PCAP_INCLUDE_DIRS}
+	${MBM_WEB100_INCLUDE_DIRS})
 
 file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_library(mbm ${SRC_FILES})
-
