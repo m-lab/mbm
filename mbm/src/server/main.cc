@@ -205,14 +205,19 @@ int main(int argc, const char* argv[]) {
   pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
 #endif  // USE_PCAP
 
+#ifdef USE_WEB100
+  web100::Initialize();
+#endif
+
   mlab::ServerSocket* socket = mlab::ServerSocket::CreateOrDie(atoi(port));
   CleanShutdown shutdown(socket);
-#ifdef USE_WEB100
-  web100::Initialize(socket);
-#endif
 
   socket->Select();
   socket->Accept();
+
+#ifdef USE_WEB100
+  web100::CreateConnection(socket);
+#endif
 
   // TODO(dominic): Do we need to get the range from the client or can this be a
   // server setting?
