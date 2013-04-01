@@ -8,6 +8,10 @@ if(DEFINED USE_PCAP AND USE_PCAP)
 	find_package(PCAP REQUIRED)
 endif()
 
+if(DEFINED USE_WEB100 AND USE_WEB100)
+	find_package(Web100 REQUIRED)
+endif()
+
 add_subdirectory(${MLAB_LIBRARIES_ROOT})
 add_subdirectory(src/common)
 add_subdirectory(src/client)

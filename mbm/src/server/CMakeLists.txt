@@ -33,6 +33,15 @@ else()
 	set(MBM_PCAP_LIBRARIES "")
 endif()
 
+if(DEFINED USE_WEB100 AND USE_WEB100)
+	add_definitions(-DUSE_WEB100)
+	set(MBM_WEB100_INCLUDE_DIRS ${WEB100_INCLUDE_DIRS})
+	set(MBM_WEB100_LIBRARIES ${WEB100_LIBRARIES})
+else()
+	set(MBM_WEB100_INCLUDE_DIRS "")
+	set(MBM_WEB100_LIBRARIES "")
+endif()
+
 # Set CPU
 if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86")
 	add_definitions(-DARCH_X86)
@@ -42,7 +51,8 @@ include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
 	${GTEST_ROOT}/include
-	${MBM_PCAP_INCLUDE_DIRS})
+	${MBM_PCAP_INCLUDE_DIRS}
+	${MBM_WEB100_INCLUDE_DIRS})
 link_directories(
         ${PROJECT_ROOT_DIR}/lib
 	${MLAB_LIBRARIES_ROOT}/lib
@@ -52,4 +62,10 @@ file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_executable(mbm_server ${SRC_FILES})
-target_link_libraries(mbm_server mlab mbm ${MBM_PCAP_LIBRARIES} rt json-cpp)
+target_link_libraries(mbm_server
+	mlab
+	mbm
+	${MBM_WEB100_LIBRARIES}
+	${MBM_PCAP_LIBRARIES}
+	rt
+	json-cpp)

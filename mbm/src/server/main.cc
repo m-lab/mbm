@@ -14,6 +14,11 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef USE_WEB100
+extern "C" {
+#include <web100/web100.h>
+}
+#endif
 
 #include <iostream>
 #include <map>
@@ -25,6 +30,9 @@
 #ifdef USE_PCAP
 #include "common/pcap.h"
 #endif  // USE_PCAP
+#ifdef USE_WEB100
+#include "common/web100.h"
+#endif  // USE_WEB100
 #include "common/scoped_ptr.h"
 #include "mlab/mlab.h"
 #include "mlab/server_socket.h"
@@ -103,6 +111,9 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
 
   std::string chunk_data(bytes_per_chunk, 'b');
 
+#ifdef USE_WEB100
+  web100::Start();
+#endif
   uint32_t packets_sent = 0;
   while (packets_sent < TOTAL_PACKETS_TO_SEND) {
   //  std::cout << '.' << std::flush;
@@ -144,6 +155,10 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
     }
   }
   std::cout << "\n";
+#ifdef USE_WEB100
+  web100::Stop();
+  lost_packets = web100::GetLossCount();
+#endif
 
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
@@ -158,6 +173,9 @@ class CleanShutdown {
       : socket_(socket) {}
   ~CleanShutdown() {
     socket_->Send(END_OF_LINE);
+#ifdef USE_WEB100
+    web100::Shutdown();
+#endif  // USE_WEB100
 #ifdef USE_PCAP
     pcap::Shutdown();
 #endif  // USE_PCAP
@@ -189,6 +207,10 @@ int main(int argc, const char* argv[]) {
 
   mlab::ServerSocket* socket = mlab::ServerSocket::CreateOrDie(atoi(port));
   CleanShutdown shutdown(socket);
+#ifdef USE_WEB100
+  web100::Initialize(socket);
+#endif
+
   socket->Select();
   socket->Accept();
 
