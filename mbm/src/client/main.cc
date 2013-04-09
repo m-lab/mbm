@@ -37,6 +37,7 @@ int main(int argc, const char* argv[]) {
 //      break;
     recv = socket->Receive(chunk_len);
   }
-  std::cout << "\n";
+  std::cout << recv.substr(recv.find(END_OF_LINE) + strlen(END_OF_LINE) - 1,
+                           recv.length()) << "\n";
   return 0;
 }

@@ -154,6 +154,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
       std::cout << "o" << std::flush;
     }
   }
+  socket->Send(END_OF_LINE);
   std::cout << "\n";
 #ifdef USE_WEB100
   web100::Stop();
@@ -165,25 +166,6 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
 
   return static_cast<double>(lost_packets) / packets_sent;
 }
-
-// Utility class to send EOL and shutdown pcap before exit.
-class CleanShutdown {
- public:
-  explicit CleanShutdown(const mlab::Socket* socket)
-      : socket_(socket) {}
-  ~CleanShutdown() {
-    socket_->Send(END_OF_LINE);
-#ifdef USE_WEB100
-    web100::Shutdown();
-#endif  // USE_WEB100
-#ifdef USE_PCAP
-    pcap::Shutdown();
-#endif  // USE_PCAP
-  }
-
- private:
-  scoped_ptr<const mlab::Socket> socket_;
-};
 
 }  // namespace mbm
 
@@ -205,66 +187,40 @@ int main(int argc, const char* argv[]) {
   pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
 #endif  // USE_PCAP
 
-  mlab::ServerSocket* socket = mlab::ServerSocket::CreateOrDie(atoi(port));
-  CleanShutdown shutdown(socket);
+  while (true) {
+    scoped_ptr<mlab::ServerSocket> socket(
+        mlab::ServerSocket::CreateOrDie(atoi(port)));
+
 #ifdef USE_WEB100
-  web100::Initialize(socket);
+    web100::Initialize(socket);
 #endif
 
-  socket->Select();
-  socket->Accept();
+    socket->Select();
+    socket->Accept();
 
-  // TODO(dominic): Do we need to get the range from the client or can this be a
-  // server setting?
-  Config config;
-  config.FromString(socket->Receive(1024));
+    Config config;
+    config.FromString(socket->Receive(1024));
 
-  std::cout << "Setting CBR range [" << config.low_cbr_kb_s << ", " <<
-               config.high_cbr_kb_s << "] kb/s\n";
+    std::cout << "Setting config [" << config.cbr_kb_s << " kb/s | " <<
+                 config.loss_threshold << " %]\n";
 
-  // The |loss_threshold| allows us to find the CBR that gives loss of a certain
-  // percentage.
-  double loss_threshold = 1.0;
+    double loss_rate = RunCBR(socket.get(), config.cbr_kb_s);
+    if (loss_rate > config.loss_threshold) {
+      std::cout << "FAIL\n";
+      socket->Send("FAIL");
+    } else {
+      std::cout << "PASS\n";
+      socket->Send("PASS");
+    }
 
-  double loss_rate = RunCBR(socket, config.low_cbr_kb_s);
-  if (loss_rate > loss_threshold) {
-    std::cerr << "CBR of " << config.low_cbr_kb_s << " is already too lossy " <<
-                 "(" << loss_rate * 100 << "%)\n";
-    std::cerr << "Please provide a lower range to try.\n";
-    return 1;
+#ifdef USE_WEB100
+    web100::Shutdown();
+#endif  // USE_WEB100
   }
 
-  loss_rate = RunCBR(socket, config.high_cbr_kb_s);
-  if (loss_rate <= loss_threshold) {
-    std::cerr << "CBR of " << config.high_cbr_kb_s << " is not lossy " <<
-                 "(" << loss_rate * 100 << "%)\n";
-    std::cerr << "Please provide a higher range to try.\n";
-    return 1;
-  }
-
-  // Binary search between the low and high CBR rates to determine where we
-  // cross the loss threshold.
-  uint32_t low = config.low_cbr_kb_s;
-  uint32_t high = config.high_cbr_kb_s;
-  std::map<uint32_t, double> cbr_loss_map;
-  while (low < high) {
-    uint32_t test_cbr = low + (high - low) / 2;
-    loss_rate = RunCBR(socket, test_cbr);
-    cbr_loss_map.insert(std::make_pair(test_cbr, loss_rate));
-    if (loss_rate < loss_threshold)
-      low = test_cbr;
-    else if (loss_rate > loss_threshold)
-      high = test_cbr;
-    else
-      break;
-  }
-
-  // Report the results.
-  std::cout << "CBR, loss_rate\n";
-  for (std::map<uint32_t, double>::const_iterator it = cbr_loss_map.begin();
-       it != cbr_loss_map.end(); ++it) {
-    std::cout << it->first << ", " << it->second * 100 << "%%\n";
-  }
+#ifdef USE_PCAP
+    pcap::Shutdown();
+#endif  // USE_PCAP
 
   return 0;
 }
