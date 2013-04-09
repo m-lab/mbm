@@ -181,19 +181,20 @@ int main(int argc, const char* argv[]) {
   mlab::SetLogSeverity(mlab::VERBOSE);
 
   const char* port = argv[1];
+
 #ifdef USE_PCAP
   // TODO(dominic): Either findalldevs or do something to encourage this device
   // to be correct.
   pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
 #endif  // USE_PCAP
 
+#ifdef USE_WEB100
+    web100::Initialize();
+#endif
+
   while (true) {
     scoped_ptr<mlab::ServerSocket> socket(
         mlab::ServerSocket::CreateOrDie(atoi(port)));
-
-#ifdef USE_WEB100
-    web100::Initialize(socket);
-#endif
 
     socket->Select();
     socket->Accept();
