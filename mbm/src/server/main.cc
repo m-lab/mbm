@@ -206,7 +206,7 @@ int main(int argc, const char* argv[]) {
                  config.loss_threshold << " %]\n";
 
 #ifdef USE_WEB100
-    web100::CreateConnection(socket);
+    web100::CreateConnection(socket.get());
 #endif
 
     double loss_rate = RunCBR(socket.get(), config.cbr_kb_s);
