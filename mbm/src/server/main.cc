@@ -110,6 +110,8 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
 
   std::string chunk_data(bytes_per_chunk, 'b');
+  for (uint32_t i = 0; i < chunk_data.size(); ++i)
+    chunk_data[i] = static_cast<char>(rand() % 255);
 
 #ifdef USE_WEB100
   web100::Start();
@@ -121,8 +123,8 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
 
     // Rerandomize the chunk data just in case someone is trying to be too
     // clever.
-    for (uint32_t i = 0; i < chunk_data.size(); ++i)
-      chunk_data[i] = static_cast<char>(rand() % 255);
+    //for (uint32_t i = 0; i < chunk_data.size(); ++i)
+    //  chunk_data[i] = static_cast<char>(rand() % 255);
 
     // And send
     socket->Send(chunk_data);
@@ -217,11 +219,11 @@ int main(int argc, const char* argv[]) {
       std::cout << "PASS\n";
       socket->Send("PASS");
     }
+  }
 
 #ifdef USE_WEB100
     web100::Shutdown();
 #endif  // USE_WEB100
-  }
 
 #ifdef USE_PCAP
     pcap::Shutdown();
