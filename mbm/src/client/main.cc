@@ -22,7 +22,7 @@ int main(int argc, const char* argv[]) {
   scoped_ptr<mlab::ClientSocket> socket(
       mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
 
-  const Config config(1024, 100 * 1024);
+  const Config config(600 * 1024, 0.0);
   socket->Send(config.AsString());
 
   // Expect test to start now. Server drives the test by picking a CBR and
