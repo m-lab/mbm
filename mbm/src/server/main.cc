@@ -204,6 +204,10 @@ int main(int argc, const char* argv[]) {
     std::cout << "Setting config [" << config.cbr_kb_s << " kb/s | " <<
                  config.loss_threshold << " %]\n";
 
+#ifdef USE_WEB100
+    web100::CreateConnection(socket);
+#endif
+
     double loss_rate = RunCBR(socket.get(), config.cbr_kb_s);
     if (loss_rate > config.loss_threshold) {
       std::cout << "FAIL\n";
