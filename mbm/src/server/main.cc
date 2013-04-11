@@ -42,6 +42,12 @@ extern "C" {
 
 namespace mbm {
 
+enum Result {
+  RESULT_FAIL,
+  RESULT_PASS,
+  RESULT_INCONCLUSIVE
+};
+
 #ifdef USE_PCAP
 std::set<uint32_t> sequence_nos;
 #endif  // USE_PCAP
@@ -91,8 +97,8 @@ void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
 }
 #endif  // USE_PCAP
 
-double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
-  std::cout << "Running CBR at " << cbr_kb_s << "\n";
+Result RunCBR(const mlab::Socket* socket, const Config& config) {
+  std::cout << "Running CBR at " << config.cbr_kb_s << "\n";
 
 #ifdef USE_PCAP
   sequence_nos.clear();
@@ -102,7 +108,7 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   // TODO(dominic): Should we tell the client the |bytes_per_chunk| so they know
   // how much to ask for on every tick?
   uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
-  uint32_t bytes_per_ms = cbr_kb_s * 1024 / (8 * 1000);
+  uint32_t bytes_per_ms = config.cbr_kb_s * 1024 / (8 * 1000);
   uint32_t time_per_chunk_ns = (1000000 * bytes_per_chunk) / bytes_per_ms;
 
   std::cout << "  bytes_per_chunk: " << bytes_per_chunk << "\n";
@@ -166,7 +172,14 @@ double RunCBR(const mlab::Socket* socket, uint32_t cbr_kb_s) {
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
 
-  return static_cast<double>(lost_packets) / packets_sent;
+  double loss_ratio = static_cast<double>(lost_packets) / packets_sent;
+  if (loss_ratio > 1.0)
+    return RESULT_INCONCLUSIVE;
+
+  if (loss_ratio > config.loss_threshold)
+    return RESULT_FAIL;
+
+  return RESULT_PASS;
 }
 
 }  // namespace mbm
@@ -211,13 +224,20 @@ int main(int argc, const char* argv[]) {
     web100::CreateConnection(socket.get());
 #endif
 
-    double loss_rate = RunCBR(socket.get(), config.cbr_kb_s);
-    if (loss_rate > config.loss_threshold) {
-      std::cout << "FAIL\n";
-      socket->Send("FAIL");
-    } else {
-      std::cout << "PASS\n";
-      socket->Send("PASS");
+    Result result = RunCBR(socket.get(), config);
+    switch (result) {
+      case RESULT_PASS:
+        std::cout << "PASS\n";
+        socket->Send("PASS");
+        break;
+      case RESULT_FAIL:
+        std::cout << "FAIL\n";
+        socket->Send("FAIL");
+        break;
+      case RESULT_INCONCLUSIVE:
+        std::cout << "INCONCLUSIVE\n";
+        socket->Send("INCONCLUSIVE");
+        break;
     }
   }
 
