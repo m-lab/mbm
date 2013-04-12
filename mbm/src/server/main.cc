@@ -47,8 +47,6 @@ extern "C" {
 #define BASE_PORT 12345
 #define NUM_PORTS 100
 
-#define NUM_THREADS 10
-
 namespace mbm {
 
 enum Result {
