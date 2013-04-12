@@ -8,6 +8,8 @@ endif()
 
 project(mbm_server)
 
+find_package(Threads REQUIRED)
+
 set(PROJECT_ROOT_DIR ${PROJECT_SOURCE_DIR}/../..)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/bin)
@@ -68,4 +70,5 @@ target_link_libraries(mbm_server
 	${MBM_WEB100_LIBRARIES}
 	${MBM_PCAP_LIBRARIES}
 	rt
-	json-cpp)
+	json-cpp
+	${CMAKE_THREAD_LIBS_INIT})

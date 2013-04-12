@@ -8,6 +8,7 @@
 #ifdef USE_PCAP
 #include <pcap.h>
 #endif
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,8 @@ extern "C" {
 #define BASE_PORT 12345
 #define NUM_PORTS 100
 
+#define NUM_THREADS 10
+
 namespace mbm {
 
 enum Result {
@@ -58,7 +61,16 @@ enum Result {
 std::set<uint32_t> sequence_nos;
 #endif  // USE_PCAP
 
+const char* control_port = NULL;
 uint32_t lost_packets = 0;
+bool used_port[NUM_PORTS];
+
+struct ServerConfig {
+  ServerConfig(uint16_t port, const Config& config)
+      : port(port), config(config) { }
+  uint16_t port;
+  Config config;
+};
 
 uint32_t get_time_ns() {
   struct timespec time;
@@ -188,6 +200,72 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
   return RESULT_PASS;
 }
 
+void* ServerThread(void* server_config_data) {
+  scoped_ptr<ServerConfig> server_config(
+      reinterpret_cast<ServerConfig*>(server_config_data));
+
+  std::stringstream ss;
+  ss << server_config->port + BASE_PORT;
+
+  // TODO: pretty sure this doesn't work when multithreaded. Kill it with fire.
+#ifdef USE_PCAP
+  // TODO(dominic): Either findalldevs or do something to encourage this device
+  // to be correct.
+  pcap::Initialize(std::string("src localhost and src port ") + ss.str(), "lo");
+#endif  // USE_PCAP
+
+  std::cout << "Listening on " << ss.str() << "\n";
+
+  // TODO: Consider not dying but picking a different port.
+  scoped_ptr<mlab::ServerSocket> mbm_socket(mlab::ServerSocket::CreateOrDie(
+      server_config->port + BASE_PORT, server_config->config.socket_type));
+  mbm_socket->Select();
+  mbm_socket->Accept();
+
+#ifdef USE_WEB100
+  web100::CreateConnection(mbm_socket.get());
+#endif
+
+  assert(mbm_socket->Receive(strlen(READY)) == READY);
+
+  Result result = RunCBR(mbm_socket.get(), server_config->config);
+  switch (result) {
+    case RESULT_PASS:
+      std::cout << "PASS\n";
+      mbm_socket->Send("PASS");
+      break;
+    case RESULT_FAIL:
+      std::cout << "FAIL\n";
+      mbm_socket->Send("FAIL");
+      break;
+    case RESULT_INCONCLUSIVE:
+      std::cout << "INCONCLUSIVE\n";
+      mbm_socket->Send("INCONCLUSIVE");
+      break;
+  }
+
+#ifdef USE_PCAP
+  pcap::Shutdown();
+#endif  // USE_PCAP
+
+  used_port[server_config->port] = false;
+
+  return NULL;
+}
+
+// TODO: this might require a mutex on used_port.
+uint16_t GetAvailablePort() {
+  // TODO: This could be smarter - maintain a set of unused ports, eg., and
+  // pick the first.
+  uint16_t mbm_port = 0;
+  for (; mbm_port < NUM_PORTS; ++mbm_port) {
+    if (!used_port[mbm_port])
+      break;
+  }
+  assert(mbm_port != NUM_PORTS);
+  return mbm_port;
+}
+
 }  // namespace mbm
 
 int main(int argc, const char* argv[]) {
@@ -201,13 +279,12 @@ int main(int argc, const char* argv[]) {
   mlab::Initialize("mbm_server", MBM_VERSION);
   mlab::SetLogSeverity(mlab::VERBOSE);
 
-  const char* control_port = argv[1];
+  control_port = argv[1];
 
 #ifdef USE_WEB100
     web100::Initialize();
 #endif
 
-  bool used_port[NUM_PORTS];
   for (int i = 0; i < NUM_PORTS; ++i)
     used_port[i] = false;
 
@@ -225,68 +302,33 @@ int main(int argc, const char* argv[]) {
                  config.loss_threshold << " %]\n";
 
     // Pick a port.
-    // TODO: This could be smarter - maintain a set of unused ports, eg., and
-    // pick the first.
-    uint16_t mbm_port = 0;
-    for (; mbm_port < NUM_PORTS; ++mbm_port) {
-      if (!used_port[mbm_port])
-        break;
-    }
-    assert(mbm_port != NUM_PORTS);
+    uint16_t mbm_port = mbm::GetAvailablePort();
     used_port[mbm_port] = true;
 
+    // Note, the server thread will delete this.
+    ServerConfig* server_config = new ServerConfig(mbm_port, config);
+
+    // Each server socket runs on a different thread.
+    pthread_t thread;
+    int rc = pthread_create(&thread, NULL, mbm::ServerThread,
+                            (void*) server_config);
+    if (rc != 0) {
+      std::cerr << "Failed to create thread: " << strerror(errno) <<
+                   " [" << errno << "]\n";
+      return 1;
+    }
+
+    // Let the client know that they can connect.
     std::stringstream ss;
     ss << mbm_port + BASE_PORT;
     socket->Send(ss.str());
-
-    // TODO: each server socket should be running on a different thread.
-
-#ifdef USE_PCAP
-    // TODO(dominic): Either findalldevs or do something to encourage this device
-    // to be correct.
-    pcap::Initialize(std::string("src localhost and src port ") + ss.str(), "lo");
-#endif  // USE_PCAP
-
-    std::cout << "Listening on " << ss.str() << "\n";
-
-    // TODO: Consider not dying but picking a different port.
-    scoped_ptr<mlab::ServerSocket> mbm_socket(
-        mlab::ServerSocket::CreateOrDie(mbm_port + BASE_PORT, config.socket_type));
-    mbm_socket->Select();
-    mbm_socket->Accept();
-
-#ifdef USE_WEB100
-    web100::CreateConnection(mbm_socket.get());
-#endif
-
-    assert(mbm_socket->Receive(strlen(READY)) == READY);
-
-    Result result = RunCBR(mbm_socket.get(), config);
-    switch (result) {
-      case RESULT_PASS:
-        std::cout << "PASS\n";
-        mbm_socket->Send("PASS");
-        break;
-      case RESULT_FAIL:
-        std::cout << "FAIL\n";
-        mbm_socket->Send("FAIL");
-        break;
-      case RESULT_INCONCLUSIVE:
-        std::cout << "INCONCLUSIVE\n";
-        mbm_socket->Send("INCONCLUSIVE");
-        break;
-    }
-
-#ifdef USE_PCAP
-    pcap::Shutdown();
-#endif  // USE_PCAP
-
-    used_port[mbm_port] = false;
   }
 
 #ifdef USE_WEB100
   web100::Shutdown();
 #endif  // USE_WEB100
 
+  pthread_exit(NULL);
   return 0;
 }
+
