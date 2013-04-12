@@ -5,16 +5,18 @@
 
 #include <string>
 
+#include "mlab/socket_type.h"
+
 class Config {
  public:
-  Config();
-  Config(uint32_t cbr_kb_s, double loss_threshold);
+  Config(SocketType socket_type, uint32_t cbr_kb_s, double loss_threshold);
+  Config(const std::string& str);
 
+  SocketType socket_type;
   uint32_t cbr_kb_s;
   double loss_threshold;
 
   std::string AsString() const;
-  void FromString(const std::string& config_str);
 };
 
 #endif  // CONFIG_H_

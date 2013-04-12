@@ -9,7 +9,9 @@
 #include <pcap.h>
 #endif
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -37,8 +39,12 @@ extern "C" {
 #include "mlab/mlab.h"
 #include "mlab/server_socket.h"
 
+// TODO: configuration
 #define PACKETS_PER_CHUNK 3
 #define TOTAL_PACKETS_TO_SEND 500
+
+#define BASE_PORT 12345
+#define NUM_PORTS 100
 
 namespace mbm {
 
@@ -105,8 +111,6 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
 #endif  // USE_PCAP
   lost_packets = 0;
 
-  // TODO(dominic): Should we tell the client the |bytes_per_chunk| so they know
-  // how much to ask for on every tick?
   uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
   uint32_t bytes_per_ms = config.cbr_kb_s * 1024 / (8 * 1000);
   uint32_t time_per_chunk_ns = (1000000 * bytes_per_chunk) / bytes_per_ms;
@@ -115,9 +119,10 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
   std::cout << "  bytes_per_ms: " << bytes_per_ms << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
 
-  std::string chunk_data(bytes_per_chunk, 'b');
-  for (uint32_t i = 0; i < chunk_data.size(); ++i)
-    chunk_data[i] = static_cast<char>(rand() % 255);
+  // TODO(dominic): Tell the client the |bytes_per_chunk| so they know how much
+  // to ask for on every tick.
+  char chunk_data[bytes_per_chunk];
+  memset(chunk_data, 0, bytes_per_chunk);
 
 #ifdef USE_WEB100
   web100::Start();
@@ -127,10 +132,11 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
   //  std::cout << '.' << std::flush;
     uint32_t start_time = get_time_ns();
 
-    // Rerandomize the chunk data just in case someone is trying to be too
-    // clever.
-    //for (uint32_t i = 0; i < chunk_data.size(); ++i)
-    //  chunk_data[i] = static_cast<char>(rand() % 255);
+    // Embed sequence number.
+    // TODO: Should we do three sends, one per packet?
+    // TODO: if we're running UDP, get the sequence numbers back over TCP after
+    // test to see which were lost.
+    sprintf(chunk_data, "%u:", packets_sent);
 
     // And send
     socket->Send(chunk_data);
@@ -188,66 +194,99 @@ int main(int argc, const char* argv[]) {
   using namespace mbm;
 
   if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <port>\n";
+    std::cerr << "Usage: " << argv[0] << " <control_port>\n";
     return 1;
   }
 
   mlab::Initialize("mbm_server", MBM_VERSION);
   mlab::SetLogSeverity(mlab::VERBOSE);
 
-  const char* port = argv[1];
-
-#ifdef USE_PCAP
-  // TODO(dominic): Either findalldevs or do something to encourage this device
-  // to be correct.
-  pcap::Initialize(std::string("src localhost and src port ") + port, "lo");
-#endif  // USE_PCAP
+  const char* control_port = argv[1];
 
 #ifdef USE_WEB100
     web100::Initialize();
 #endif
 
+  bool used_port[NUM_PORTS];
+  for (int i = 0; i < NUM_PORTS; ++i)
+    used_port[i] = false;
+
   while (true) {
     scoped_ptr<mlab::ServerSocket> socket(
-        mlab::ServerSocket::CreateOrDie(atoi(port)));
+        mlab::ServerSocket::CreateOrDie(atoi(control_port)));
 
     socket->Select();
     socket->Accept();
 
-    Config config;
-    config.FromString(socket->Receive(1024));
+    const Config config(socket->Receive(1024));
 
-    std::cout << "Setting config [" << config.cbr_kb_s << " kb/s | " <<
+    std::cout << "Setting config [" << config.socket_type << " | " <<
+                 config.cbr_kb_s << " kb/s | " <<
                  config.loss_threshold << " %]\n";
 
+    // Pick a port.
+    // TODO: This could be smarter - maintain a set of unused ports, eg., and
+    // pick the first.
+    uint16_t mbm_port = 0;
+    for (; mbm_port < NUM_PORTS; ++mbm_port) {
+      if (!used_port[mbm_port])
+        break;
+    }
+    assert(mbm_port != NUM_PORTS);
+    used_port[mbm_port] = true;
+
+    std::stringstream ss;
+    ss << mbm_port + BASE_PORT;
+    socket->Send(ss.str());
+
+    // TODO: each server socket should be running on a different thread.
+
+#ifdef USE_PCAP
+    // TODO(dominic): Either findalldevs or do something to encourage this device
+    // to be correct.
+    pcap::Initialize(std::string("src localhost and src port ") + ss.str(), "lo");
+#endif  // USE_PCAP
+
+    std::cout << "Listening on " << ss.str() << "\n";
+
+    // TODO: Consider not dying but picking a different port.
+    scoped_ptr<mlab::ServerSocket> mbm_socket(
+        mlab::ServerSocket::CreateOrDie(mbm_port + BASE_PORT, config.socket_type));
+    mbm_socket->Select();
+    mbm_socket->Accept();
+
 #ifdef USE_WEB100
-    web100::CreateConnection(socket.get());
+    web100::CreateConnection(mbm_socket.get());
 #endif
 
-    Result result = RunCBR(socket.get(), config);
+    assert(mbm_socket->Receive(strlen(READY)) == READY);
+
+    Result result = RunCBR(mbm_socket.get(), config);
     switch (result) {
       case RESULT_PASS:
         std::cout << "PASS\n";
-        socket->Send("PASS");
+        mbm_socket->Send("PASS");
         break;
       case RESULT_FAIL:
         std::cout << "FAIL\n";
-        socket->Send("FAIL");
+        mbm_socket->Send("FAIL");
         break;
       case RESULT_INCONCLUSIVE:
         std::cout << "INCONCLUSIVE\n";
-        socket->Send("INCONCLUSIVE");
+        mbm_socket->Send("INCONCLUSIVE");
         break;
     }
-  }
-
-#ifdef USE_WEB100
-    web100::Shutdown();
-#endif  // USE_WEB100
 
 #ifdef USE_PCAP
     pcap::Shutdown();
 #endif  // USE_PCAP
+
+    used_port[mbm_port] = false;
+  }
+
+#ifdef USE_WEB100
+  web100::Shutdown();
+#endif  // USE_WEB100
 
   return 0;
 }
