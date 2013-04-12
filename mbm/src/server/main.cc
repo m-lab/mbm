@@ -62,6 +62,7 @@ std::set<uint32_t> sequence_nos;
 const char* control_port = NULL;
 uint32_t lost_packets = 0;
 bool used_port[NUM_PORTS];
+pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct ServerConfig {
   ServerConfig(uint16_t port, const Config& config)
@@ -246,12 +247,13 @@ void* ServerThread(void* server_config_data) {
   pcap::Shutdown();
 #endif  // USE_PCAP
 
+  pthread_mutex_lock(&used_port_mutex);
   used_port[server_config->port] = false;
+  pthread_mutex_unlock(&used_port_mutex);
 
-  return NULL;
+  pthread_exit(NULL);
 }
 
-// TODO: this might require a mutex on used_port.
 uint16_t GetAvailablePort() {
   // TODO: This could be smarter - maintain a set of unused ports, eg., and
   // pick the first.
@@ -301,7 +303,9 @@ int main(int argc, const char* argv[]) {
 
     // Pick a port.
     uint16_t mbm_port = mbm::GetAvailablePort();
+    pthread_mutex_lock(&used_port_mutex);
     used_port[mbm_port] = true;
+    pthread_mutex_unlock(&used_port_mutex);
 
     // Note, the server thread will delete this.
     ServerConfig* server_config = new ServerConfig(mbm_port, config);
