@@ -7,6 +7,8 @@
 
 #include "mlab/socket_type.h"
 
+namespace mbm {
+
 class Config {
  public:
   Config(SocketType socket_type, uint32_t cbr_kb_s, double loss_threshold);
@@ -18,5 +20,7 @@ class Config {
 
   std::string AsString() const;
 };
+
+}  // namespace mbm
 
 #endif  // CONFIG_H_

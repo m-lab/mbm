@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 
+namespace mbm {
 namespace {
 const std::string delimiter = ":";
 }
@@ -38,3 +39,5 @@ std::string Config::AsString() const {
         loss_threshold << delimiter;
   return ss.str();
 }
+
+}  // namespace mbm

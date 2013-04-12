@@ -32,7 +32,7 @@ int main(int argc, const char* argv[]) {
     }
   }
 
-  const Config config(socket_type, 600 * 1024, 0.0);
+  const mbm::Config config(socket_type, 600 * 1024, 0.0);
   socket->Send(config.AsString());
 
   uint16_t port = atoi(socket->Receive(16).c_str());
