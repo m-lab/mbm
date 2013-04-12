@@ -26,14 +26,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-strict-aliasing")
 
 add_definitions(-DOS_LINUX)
-if(DEFINED USE_PCAP AND USE_PCAP)
-	add_definitions(-DUSE_PCAP)
-	set(MBM_PCAP_INCLUDE_DIRS ${PCAP_INCLUDE_DIRS})
-	set(MBM_PCAP_LIBRARIES ${PCAP_LIBRARIES})
-else()
-	set(MBM_PCAP_INCLUDE_DIRS "")
-	set(MBM_PCAP_LIBRARIES "")
-endif()
 
 if(DEFINED USE_WEB100 AND USE_WEB100)
 	add_definitions(-DUSE_WEB100)
@@ -53,7 +45,6 @@ include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
 	${GTEST_ROOT}/include
-	${MBM_PCAP_INCLUDE_DIRS}
 	${MBM_WEB100_INCLUDE_DIRS})
 link_directories(
         ${PROJECT_ROOT_DIR}/lib
@@ -68,7 +59,6 @@ target_link_libraries(mbm_server
 	mlab
 	mbm
 	${MBM_WEB100_LIBRARIES}
-	${MBM_PCAP_LIBRARIES}
 	rt
 	json-cpp
 	${CMAKE_THREAD_LIBS_INIT})

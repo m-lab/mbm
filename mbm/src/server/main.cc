@@ -1,13 +1,6 @@
 #include <assert.h>
 #include <errno.h>
-#ifdef USE_PCAP
-#include <netinet/ip.h>
-#include <netinet/if_ether.h>
-#endif  // USE_PCAP
 #include <netinet/tcp.h>
-#ifdef USE_PCAP
-#include <pcap.h>
-#endif
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -30,9 +23,6 @@ extern "C" {
 
 #include "common/config.h"
 #include "common/constants.h"
-#ifdef USE_PCAP
-#include "common/pcap.h"
-#endif  // USE_PCAP
 #ifdef USE_WEB100
 #include "common/web100.h"
 #endif  // USE_WEB100
@@ -55,10 +45,6 @@ enum Result {
   RESULT_INCONCLUSIVE
 };
 
-#ifdef USE_PCAP
-std::set<uint32_t> sequence_nos;
-#endif  // USE_PCAP
-
 const char* control_port = NULL;
 uint32_t lost_packets = 0;
 bool used_port[NUM_PORTS];
@@ -77,49 +63,9 @@ uint32_t get_time_ns() {
   return time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
-#ifdef USE_PCAP
-void pcap_callback(u_char* args, const struct pcap_pkthdr* header,
-                   const u_char* packet) {
-  size_t packet_len = header->len;
-  if (packet_len < sizeof(struct ethhdr) + sizeof(struct iphdr)) {
-    std::cerr << "X";
-    return;
-  }
-  const struct iphdr* ip = reinterpret_cast<const struct iphdr*>(
-      packet + sizeof(struct ethhdr));
-  packet_len -= sizeof(struct ethhdr);
-  size_t ip_header_len = ip->ihl * 4;
-  if (packet_len < ip_header_len) {
-    std::cerr << "X";
-    return;
-  }
-
-  if (ip->protocol != IPPROTO_TCP) {
-    std::cerr << "P";
-    return;
-  }
-
-  const struct tcphdr* tcp_header = reinterpret_cast<const struct tcphdr*>(
-      packet + sizeof(struct ethhdr) + ip_header_len);
-  packet_len -= ip_header_len;
-  if (packet_len < sizeof(tcp_header)) {
-    std::cerr << "X";
-    return;
-  }
-
-  // If the sequence number is a duplicate, count it as lost.
-  if (sequence_nos.insert(tcp_header->seq).second == false)
-    ++lost_packets;
-  // std::cout << "[PCAP] " << tcp_header->seq << "\n";
-}
-#endif  // USE_PCAP
-
 Result RunCBR(const mlab::Socket* socket, const Config& config) {
   std::cout << "Running CBR at " << config.cbr_kb_s << "\n";
 
-#ifdef USE_PCAP
-  sequence_nos.clear();
-#endif  // USE_PCAP
   lost_packets = 0;
 
   uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
@@ -152,11 +98,6 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
     // And send
     socket->Send(chunk_data);
     packets_sent += PACKETS_PER_CHUNK;
-
-#ifdef USE_PCAP
-    // TODO(dominic): How can we capture but retain high CBR?
-    pcap::Capture(PACKETS_PER_CHUNK, pcap_callback);
-#endif  // USE_PCAP
 
     // If we have time left over, sleep the remainder.
     uint32_t end_time = get_time_ns();
@@ -203,49 +144,40 @@ void* ServerThread(void* server_config_data) {
   scoped_ptr<ServerConfig> server_config(
       reinterpret_cast<ServerConfig*>(server_config_data));
 
-  std::stringstream ss;
-  ss << server_config->port + BASE_PORT;
+  {
+    const uint16_t port = server_config->port + BASE_PORT;
 
-  // TODO: pretty sure this doesn't work when multithreaded. Kill it with fire.
-#ifdef USE_PCAP
-  // TODO(dominic): Either findalldevs or do something to encourage this device
-  // to be correct.
-  pcap::Initialize(std::string("src localhost and src port ") + ss.str(), "lo");
-#endif  // USE_PCAP
+    // TODO: Consider not dying but picking a different port.
+    scoped_ptr<mlab::ServerSocket> mbm_socket(mlab::ServerSocket::CreateOrDie(
+        port, server_config->config.socket_type));
 
-  std::cout << "Listening on " << ss.str() << "\n";
+    std::cout << "Listening on " << port << "\n";
 
-  // TODO: Consider not dying but picking a different port.
-  scoped_ptr<mlab::ServerSocket> mbm_socket(mlab::ServerSocket::CreateOrDie(
-      server_config->port + BASE_PORT, server_config->config.socket_type));
-  mbm_socket->Select();
-  mbm_socket->Accept();
+    mbm_socket->Select();
+    mbm_socket->Accept();
 
 #ifdef USE_WEB100
-  web100::CreateConnection(mbm_socket.get());
+    web100::CreateConnection(mbm_socket.get());
 #endif
 
-  assert(mbm_socket->Receive(strlen(READY)) == READY);
+    assert(mbm_socket->Receive(strlen(READY)) == READY);
 
-  Result result = RunCBR(mbm_socket.get(), server_config->config);
-  switch (result) {
-    case RESULT_PASS:
-      std::cout << "PASS\n";
-      mbm_socket->Send("PASS");
-      break;
-    case RESULT_FAIL:
-      std::cout << "FAIL\n";
-      mbm_socket->Send("FAIL");
-      break;
-    case RESULT_INCONCLUSIVE:
-      std::cout << "INCONCLUSIVE\n";
-      mbm_socket->Send("INCONCLUSIVE");
-      break;
+    Result result = RunCBR(mbm_socket.get(), server_config->config);
+    switch (result) {
+      case RESULT_PASS:
+        std::cout << "PASS\n";
+        mbm_socket->Send("PASS");
+        break;
+      case RESULT_FAIL:
+        std::cout << "FAIL\n";
+        mbm_socket->Send("FAIL");
+        break;
+      case RESULT_INCONCLUSIVE:
+        std::cout << "INCONCLUSIVE\n";
+        mbm_socket->Send("INCONCLUSIVE");
+        break;
+    }
   }
-
-#ifdef USE_PCAP
-  pcap::Shutdown();
-#endif  // USE_PCAP
 
   pthread_mutex_lock(&used_port_mutex);
   used_port[server_config->port] = false;

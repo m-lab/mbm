@@ -28,13 +28,6 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86")
 	add_definitions(-DARCH_X86)
 endif()
 
-if(DEFINED USE_PCAP AND USE_PCAP)
-	add_definitions(-DUSE_PCAP)
-	set(MBM_PCAP_INCLUDE_DIRS ${PCAP_INCLUDE_DIRS})
-else()
-	set(MBM_PCAP_INCLUDE_DIRS "")
-endif()
-
 if(DEFINED USE_WEB100 AND USE_WEB100)
 	add_definitions(-DUSE_WEB100)
 	set(MBM_WEB100_INCLUDE_DIRS ${WEB100_INCLUDE_DIRS})
@@ -48,7 +41,6 @@ include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
 	${GTEST_ROOT}/include
-	${MBM_PCAP_INCLUDE_DIRS}
 	${MBM_WEB100_INCLUDE_DIRS})
 
 file(GLOB_RECURSE SRC_FILES *.cc)
