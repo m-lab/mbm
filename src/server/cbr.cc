@@ -10,6 +10,7 @@
 
 #include "common/config.h"
 #include "common/constants.h"
+#include "common/web100.h"
 #include "mlab/socket.h"
 
 // TODO: configuration
