@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef USE_WEB100
 extern "C" {
 #include <web100/web100.h>
@@ -32,6 +33,8 @@ const char* control_port = NULL;
 bool used_port[NUM_PORTS];
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+const char* result_str[NUM_RESULTS] = { "FAIL", "PASS", "INCONCLUSIVE" };
+
 struct ServerConfig {
   ServerConfig(uint16_t port, const Config& config)
       : port(port), config(config) { }
@@ -59,23 +62,11 @@ void* ServerThread(void* server_config_data) {
     web100::CreateConnection(mbm_socket.get());
 #endif
 
-    assert(mbm_socket->Receive(strlen(READY)) == READY);
+    assert(mbm_socket->Receive(strlen(READY)).str() == READY);
 
     Result result = RunCBR(mbm_socket.get(), server_config->config);
-    switch (result) {
-      case RESULT_PASS:
-        std::cout << "PASS\n";
-        mbm_socket->Send("PASS");
-        break;
-      case RESULT_FAIL:
-        std::cout << "FAIL\n";
-        mbm_socket->Send("FAIL");
-        break;
-      case RESULT_INCONCLUSIVE:
-        std::cout << "INCONCLUSIVE\n";
-        mbm_socket->Send("INCONCLUSIVE");
-        break;
-    }
+    std::cout << result_str[result];
+    mbm_socket->Send(mlab::Packet(result_str[result], strlen(result_str[result])));
   }
 
   pthread_mutex_lock(&used_port_mutex);
@@ -126,7 +117,7 @@ int main(int argc, const char* argv[]) {
     socket->Select();
     socket->Accept();
 
-    const Config config(socket->Receive(1024));
+    const Config config(socket->Receive(1024).str());
 
     std::cout << "Setting config [" << config.socket_type << " | " <<
                  config.cbr_kb_s << " kb/s | " <<
@@ -154,7 +145,7 @@ int main(int argc, const char* argv[]) {
     // Let the client know that they can connect.
     std::stringstream ss;
     ss << mbm_port + BASE_PORT;
-    socket->Send(ss.str());
+    socket->Send(mlab::Packet(ss.str()));
   }
 
 #ifdef USE_WEB100

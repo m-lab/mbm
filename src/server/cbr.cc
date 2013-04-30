@@ -49,6 +49,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
   // to ask for on every tick.
   char chunk_data[bytes_per_chunk];
   memset(chunk_data, 'x', bytes_per_chunk);
+  mlab::Packet chunk_packet(chunk_data, bytes_per_chunk);
 
 #ifdef USE_WEB100
   web100::Start();
@@ -62,10 +63,10 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
     // TODO: Should we do three sends, one per packet?
     // TODO: if we're running UDP, get the sequence numbers back over TCP after
     // test to see which were lost.
-    sprintf(chunk_data, "%u:", packets_sent);
+    //sprintf(chunk_packet.buffer(), "%u:", packets_sent);
 
     // And send
-    socket->Send(chunk_data);
+    socket->Send(chunk_packet);
     packets_sent += PACKETS_PER_CHUNK;
 
     // If we have time left over, sleep the remainder.
@@ -89,7 +90,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
       std::cout << "o" << std::flush;
     }
   }
-  socket->Send(END_OF_LINE);
+  socket->Send(mlab::Packet(END_OF_LINE, strlen(END_OF_LINE)));
   std::cout << "\n";
 #ifdef USE_WEB100
   web100::Stop();

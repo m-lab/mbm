@@ -12,7 +12,8 @@ struct Config;
 enum Result {
   RESULT_FAIL,
   RESULT_PASS,
-  RESULT_INCONCLUSIVE
+  RESULT_INCONCLUSIVE,
+  NUM_RESULTS
 };
 
 Result RunCBR(const mlab::Socket* socket, const Config& config);
