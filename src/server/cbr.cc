@@ -17,7 +17,7 @@
 
 // TODO: configuration
 #define PACKETS_PER_CHUNK 3
-#define TOTAL_PACKETS_TO_SEND 500
+#define TOTAL_PACKETS_TO_SEND 1000
 
 namespace mbm {
 namespace {
@@ -38,7 +38,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
 
   uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
   uint32_t bytes_per_ms = config.cbr_kb_s * 1024 / (8 * 1000);
-  uint32_t time_per_chunk_ns = (1000000 * bytes_per_chunk) / bytes_per_ms;
+  uint32_t time_per_chunk_ns = 1000000 * (bytes_per_ms / bytes_per_chunk);
 
   std::cout << "  bytes_per_chunk: " << bytes_per_chunk << "\n";
   std::cout << "  bytes_per_ms: " << bytes_per_ms << "\n";
