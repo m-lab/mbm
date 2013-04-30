@@ -82,7 +82,7 @@ uint32_t GetLossCount() {
   assert(before != NULL);
   assert(after != NULL);
   uint32_t result;
-  web100_delta_any(var, before, after, &result);
+  web100_delta_any(var, after, before, &result);
   return result;
 }
 

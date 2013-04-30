@@ -36,6 +36,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
 
   lost_packets = 0;
 
+  // TODO(dominic): get better MSS
   uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
   uint32_t bytes_per_ms = config.cbr_kb_s * 1024 / (8 * 1000);
   uint32_t time_per_chunk_ns = 1000000 * (bytes_per_ms / bytes_per_chunk);
@@ -47,7 +48,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
   // TODO(dominic): Tell the client the |bytes_per_chunk| so they know how much
   // to ask for on every tick.
   char chunk_data[bytes_per_chunk];
-  memset(chunk_data, 0, bytes_per_chunk);
+  memset(chunk_data, 'x', bytes_per_chunk);
 
 #ifdef USE_WEB100
   web100::Start();
