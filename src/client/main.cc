@@ -12,7 +12,8 @@
 
 int main(int argc, const char* argv[]) {
   if (argc < 3 || argc > 4) {
-    std::cerr << "Usage: " << argv[0] << " <server> <control_port> [socket_type]\n";
+    std::cout << "Usage: " << argv[0]
+              << " <server> <control_port> [socket_type]\n";
     return 1;
   }
 
@@ -54,8 +55,6 @@ int main(int argc, const char* argv[]) {
   std::string recv = mbm_socket->Receive(chunk_len).str();
   while (recv.find(END_OF_LINE) == std::string::npos) {
     std::cout << "." << std::flush;
-//    if (recv.empty())
-//      break;
     recv = mbm_socket->Receive(chunk_len).str();
   }
   std::cout << recv.substr(recv.find(END_OF_LINE) + strlen(END_OF_LINE) - 1,

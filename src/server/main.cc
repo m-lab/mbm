@@ -33,7 +33,9 @@ const char* control_port = NULL;
 bool used_port[NUM_PORTS];
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-const char* result_str[NUM_RESULTS] = { "FAIL", "PASS", "INCONCLUSIVE" };
+const char* result_str[NUM_RESULTS] = {
+  "FAIL", "PASS", "INCONCLUSIVE", "ERROR"
+};
 
 struct ServerConfig {
   ServerConfig(uint16_t port, const Config& config)
@@ -65,8 +67,12 @@ void* ServerThread(void* server_config_data) {
     assert(mbm_socket->Receive(strlen(READY)).str() == READY);
 
     Result result = RunCBR(mbm_socket.get(), server_config->config);
-    std::cout << result_str[result];
-    mbm_socket->Send(mlab::Packet(result_str[result], strlen(result_str[result])));
+    if (result == RESULT_ERROR)
+      std::cerr << result_str[result];
+    else
+      std::cout << result_str[result];
+    mbm_socket->Send(
+        mlab::Packet(result_str[result], strlen(result_str[result])));
   }
 
   pthread_mutex_lock(&used_port_mutex);

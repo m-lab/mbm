@@ -36,11 +36,23 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
 
   lost_packets = 0;
 
-  // TODO(dominic): get better MSS
-  uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * TCP_MSS;
+  int tcp_mss = TCP_MSS;
+  socklen_t mss_len = sizeof(tcp_mss);
+  if (getsockopt(socket->raw(), IPPROTO_TCP, TCP_MAXSEG, &tcp_mss, &mss_len)) {
+    if (errno == ENOPROTOOPT) {
+      std::cout << "Socket does not support TCP_MAXSEG opt. "
+                << "Using default MSS.\n";
+    } else {
+      std::cerr << "Failed to get TCP_MAXSEG: " << strerror(errno) << "\n";
+      return RESULT_ERROR;
+    }
+  }
+
+  uint32_t bytes_per_chunk = PACKETS_PER_CHUNK * tcp_mss;
   uint32_t bytes_per_ms = config.cbr_kb_s * 1024 / (8 * 1000);
   uint32_t time_per_chunk_ns = 1000000 * (bytes_per_ms / bytes_per_chunk);
 
+  std::cout << "  tcp_mss: " << tcp_mss << "\n";
   std::cout << "  bytes_per_chunk: " << bytes_per_chunk << "\n";
   std::cout << "  bytes_per_ms: " << bytes_per_ms << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
@@ -87,6 +99,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
       }
     } else {
       // Warning: Took longer to send than we budgeted.
+      // TODO(dominic): Should this be an error or inconclusive return state?
       std::cout << "o" << std::flush;
     }
   }
