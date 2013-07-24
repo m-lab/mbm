@@ -78,7 +78,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
     //sprintf(chunk_packet.buffer(), "%u:", packets_sent);
 
     // And send
-    socket->Send(chunk_packet);
+    socket->SendOrDie(chunk_packet);
     packets_sent += PACKETS_PER_CHUNK;
 
     // If we have time left over, sleep the remainder.
@@ -103,7 +103,7 @@ Result RunCBR(const mlab::Socket* socket, const Config& config) {
       std::cout << "o" << std::flush;
     }
   }
-  socket->Send(mlab::Packet(END_OF_LINE, strlen(END_OF_LINE)));
+  socket->SendOrDie(mlab::Packet(END_OF_LINE, strlen(END_OF_LINE)));
   std::cout << "\n";
 #ifdef USE_WEB100
   web100::Stop();
