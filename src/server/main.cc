@@ -136,6 +136,8 @@ int main(int argc, const char* argv[]) {
     pthread_mutex_unlock(&used_port_mutex);
 
     // Note, the server thread will delete this.
+    // TODO(dominic): This should pass the client address through to restrict
+    // connections.
     ServerConfig* server_config = new ServerConfig(mbm_port, config);
 
     // Each server socket runs on a different thread.
