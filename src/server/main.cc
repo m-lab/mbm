@@ -113,13 +113,13 @@ int main(int argc, const char* argv[]) {
     web100::Initialize();
 #endif
 
+  scoped_ptr<mlab::ServerSocket> socket(
+      mlab::ServerSocket::CreateOrDie(atoi(control_port)));
+
   for (int i = 0; i < NUM_PORTS; ++i)
     used_port[i] = false;
 
   while (true) {
-    scoped_ptr<mlab::ServerSocket> socket(
-        mlab::ServerSocket::CreateOrDie(atoi(control_port)));
-
     socket->Select();
     socket->Accept();
 

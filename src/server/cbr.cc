@@ -25,7 +25,11 @@ uint32_t lost_packets = 0;
 
 uint32_t get_time_ns() {
   struct timespec time;
+#if defined(OS_FREEBSD)
+  clock_gettime(CLOCK_MONOTONIC, &time);
+#else
   clock_gettime(CLOCK_MONOTONIC_RAW, &time);
+#endif
   return time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
