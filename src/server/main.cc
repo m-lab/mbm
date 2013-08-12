@@ -19,8 +19,9 @@ extern "C" {
 #include "common/web100.h"
 #endif  // USE_WEB100
 #include "common/scoped_ptr.h"
+#include "mlab/accepted_socket.h"
 #include "mlab/mlab.h"
-#include "mlab/server_socket.h"
+#include "mlab/listen_socket.h"
 #include "server/cbr.h"
 
 // TODO: configuration
@@ -52,26 +53,26 @@ void* ServerThread(void* server_config_data) {
     const uint16_t port = server_config->port + BASE_PORT;
 
     // TODO: Consider not dying but picking a different port.
-    scoped_ptr<mlab::ServerSocket> mbm_socket(mlab::ServerSocket::CreateOrDie(
+    scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
         port, server_config->config.socket_type));
 
     std::cout << "Listening on " << port << "\n";
 
     mbm_socket->Select();
-    mbm_socket->Accept();
+    scoped_ptr<mlab::AcceptedSocket> accepted_socket(mbm_socket->Accept());
 
 #ifdef USE_WEB100
-    web100::CreateConnection(mbm_socket.get());
+    web100::CreateConnection(accepted_socket.get());
 #endif
 
-    assert(mbm_socket->ReceiveOrDie(strlen(READY)).str() == READY);
+    assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
-    Result result = RunCBR(mbm_socket.get(), server_config->config);
+    Result result = RunCBR(accepted_socket.get(), server_config->config);
     if (result == RESULT_ERROR)
       std::cerr << result_str[result];
     else
       std::cout << result_str[result];
-    mbm_socket->SendOrDie(
+    accepted_socket->SendOrDie(
         mlab::Packet(result_str[result], strlen(result_str[result])));
   }
 
@@ -116,14 +117,13 @@ int main(int argc, const char* argv[]) {
   for (int i = 0; i < NUM_PORTS; ++i)
     used_port[i] = false;
 
+  scoped_ptr<mlab::ListenSocket> socket(
+      mlab::ListenSocket::CreateOrDie(atoi(control_port)));
   while (true) {
-    scoped_ptr<mlab::ServerSocket> socket(
-        mlab::ServerSocket::CreateOrDie(atoi(control_port)));
-
     socket->Select();
-    socket->Accept();
+    scoped_ptr<mlab::AcceptedSocket> accepted_socket(socket->Accept());
 
-    const Config config(socket->ReceiveOrDie(1024).str());
+    const Config config(accepted_socket->ReceiveOrDie(1024).str());
 
     std::cout << "Setting config [" << config.socket_type << " | " <<
                  config.cbr_kb_s << " kb/s | " <<
@@ -136,6 +136,7 @@ int main(int argc, const char* argv[]) {
     pthread_mutex_unlock(&used_port_mutex);
 
     // Note, the server thread will delete this.
+    // TODO: pass the client ip to the config
     ServerConfig* server_config = new ServerConfig(mbm_port, config);
 
     // Each server socket runs on a different thread.
@@ -151,7 +152,7 @@ int main(int argc, const char* argv[]) {
     // Let the client know that they can connect.
     std::stringstream ss;
     ss << mbm_port + BASE_PORT;
-    socket->SendOrDie(mlab::Packet(ss.str()));
+    accepted_socket->SendOrDie(mlab::Packet(ss.str()));
   }
 
 #ifdef USE_WEB100
