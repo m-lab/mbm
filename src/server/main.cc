@@ -119,6 +119,7 @@ int main(int argc, const char* argv[]) {
 
   scoped_ptr<mlab::ListenSocket> socket(
       mlab::ListenSocket::CreateOrDie(atoi(control_port)));
+
   while (true) {
     socket->Select();
     scoped_ptr<mlab::AcceptedSocket> accepted_socket(socket->Accept());
