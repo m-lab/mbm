@@ -4,6 +4,10 @@ project (mbm)
 set(MLAB_LIBRARIES_ROOT ${PROJECT_SOURCE_DIR}/third_party/m-lab)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR})
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+	add_definitions(-DOS_FREEBSD)
+endif()
+
 if(DEFINED USE_WEB100 AND USE_WEB100)
 	find_package(Web100 REQUIRED)
 endif()
