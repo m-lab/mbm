@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.6)
 project (mbm)
 
-set(MLAB_LIBRARIES_ROOT ${PROJECT_SOURCE_DIR}/third_party/m-lab.libraries/trunk)
+set(MLAB_LIBRARIES_ROOT ${PROJECT_SOURCE_DIR}/third_party/m-lab)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR})
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
