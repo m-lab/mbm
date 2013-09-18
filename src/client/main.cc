@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
 
 #include <iostream>
 
@@ -11,9 +12,9 @@
 #include "mlab/mlab.h"
 
 int main(int argc, const char* argv[]) {
-  if (argc < 3 || argc > 4) {
+  if (argc < 3 || argc > 5) {
     std::cout << "Usage: " << argv[0]
-              << " <server> <control_port> [socket_type]\n";
+              << " <server> <control_port> [rate] [socket_type]\n";
     return 1;
   }
 
@@ -24,17 +25,22 @@ int main(int argc, const char* argv[]) {
   scoped_ptr<mlab::ClientSocket> socket(
       mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
 
+  uint32_t rate = 600;
+  if (argc >= 4) {
+    rate = atoi(argv[3]);
+  }
+
   SocketType socket_type = SOCKETTYPE_TCP;
-  if (argc == 4) {
-    if (strncmp("udp", argv[3], 3) == 0)
+  if (argc == 5) {
+    if (strncmp("udp", argv[4], 3) == 0)
       socket_type = SOCKETTYPE_UDP;
-    else if (strncmp("tcp", argv[3], 3) != 0) {
-      std::cerr << "Invalid socket type: " << argv[3] << "\n";
+    else if (strncmp("tcp", argv[4], 3) != 0) {
+      std::cerr << "Invalid socket type: " << argv[4] << "\n";
       return 1;
     }
   }
 
-  const mbm::Config config(socket_type, 600 * 1024, 0.0);
+  const mbm::Config config(socket_type, rate, 0.0);
   socket->SendOrDie(mlab::Packet(config.AsString()));
 
   uint16_t port = atoi(socket->ReceiveOrDie(16).str().c_str());
@@ -52,13 +58,25 @@ int main(int argc, const char* argv[]) {
   // receive and dump the data.
   // TODO(dominic): Determine best size chunk to receive.
   const size_t chunk_len = 10 * 1024;
+  uint32_t bytes_total = 0;
+  ssize_t foo;
+  mlab::Packet chunk_len_pkt = mbm_socket->ReceiveX(sizeof(bytes_total), &foo);
+  bytes_total = ntohl(*((uint32_t *)chunk_len_pkt.buffer()));
+  std::cout << "expecting " << bytes_total << " bytes\n";
+
+  uint32_t bytes_received = 0;
   std::string recv = mbm_socket->ReceiveOrDie(chunk_len).str();
-  while (recv.find(END_OF_LINE) == std::string::npos) {
-    std::cout << "." << std::flush;
-    recv = mbm_socket->ReceiveOrDie(chunk_len).str();
+  bytes_received += recv.length();
+  while ((bytes_received < bytes_total)) {
+    size_t remain = bytes_total - bytes_received;
+    size_t read_len = remain < chunk_len ? remain : chunk_len;
+    // std::cout << "." << std::flush;
+    recv = mbm_socket->ReceiveOrDie(read_len).str();
+    bytes_received += recv.length();
+    // std::cout << "received " << bytes_received << "\n";
   }
-  std::cout << recv.substr(recv.find(END_OF_LINE) + strlen(END_OF_LINE) - 1,
-                           recv.length()) << "\n";
+  //  std::cout << recv.substr(recv.find(END_OF_LINE) + strlen(END_OF_LINE) - 1,
+  //                         recv.length()) << "\n";
   std::cout << mbm_socket->ReceiveOrDie(chunk_len).str() << "\n";
   return 0;
 }
