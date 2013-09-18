@@ -2,6 +2,7 @@
 
 #if defined(OS_FREEBSD)
 #include <netinet/in.h>
+#include <sys/types.h>
 #endif
 
 #include <assert.h>
