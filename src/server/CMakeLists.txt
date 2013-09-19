@@ -19,7 +19,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/lib)
 # Set up directories
 set(MLAB_LIBRARIES_ROOT ${PROJECT_ROOT_DIR}/third_party/m-lab)
 set(GFLAGS_ROOT ${PROJECT_ROOT_DIR}/third_party/gflags)
-set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.6.0)
+set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.7.0)
 set(JSONCPP_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/json-cpp)
 
 set(CMAKE_CXX_FLAGS "-Wall -Werror -fPIC -fno-exceptions -fno-rtti")
