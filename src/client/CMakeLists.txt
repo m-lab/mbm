@@ -16,6 +16,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/lib)
 
 # Set up directories
 set(MLAB_LIBRARIES_ROOT ${PROJECT_ROOT_DIR}/third_party/m-lab)
+set(GFLAGS_ROOT ${PROJECT_ROOT_DIR}/third_party/gflags)
 set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.6.0)
 set(JSONCPP_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/json-cpp)
 
@@ -33,9 +34,11 @@ endif()
 include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
+	${GFLAGS_ROOT}/include
 	${GTEST_ROOT}/include)
 link_directories(
 	${PROJECT_ROOT_DIR}/lib
+	${GFLAGS_ROOT}/lib
 	${MLAB_LIBRARIES_ROOT}/lib
         ${JSONCPP_ROOT}/lib)
 
@@ -43,4 +46,4 @@ file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_executable(mbm_client ${SRC_FILES})
-target_link_libraries(mbm_client mlab mbm json-cpp) 
+target_link_libraries(mbm_client mlab mbm json-cpp gflags) 

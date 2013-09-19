@@ -19,6 +19,7 @@ extern "C" {
 #include "common/web100.h"
 #endif  // USE_WEB100
 #include "common/scoped_ptr.h"
+#include "gflags/gflags.h"
 #include "mlab/accepted_socket.h"
 #include "mlab/mlab.h"
 #include "mlab/listen_socket.h"
@@ -28,9 +29,18 @@ extern "C" {
 #define BASE_PORT 12345
 #define NUM_PORTS 100
 
-namespace mbm {
+DEFINE_int32(port, 4242, "The port to listen on");
 
-const char* control_port = NULL;
+namespace {
+bool ValidatePort(const char* flagname, int32_t value) {
+  if (value > 0 && value < 65536)
+    return true;
+  std::cerr << "Invalid value for --" << flagname << ": " << value << "\n";
+  return false;
+}
+}  // namespace
+
+namespace mbm {
 bool used_port[NUM_PORTS];
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -97,18 +107,13 @@ uint16_t GetAvailablePort() {
 
 }  // namespace mbm
 
-int main(int argc, const char* argv[]) {
-  using namespace mbm;
+int main(int argc, char* argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  if (argc != 2) {
-    std::cerr << "Usage: " << argv[0] << " <control_port>\n";
-    return 1;
-  }
+  using namespace mbm;
 
   mlab::Initialize("mbm_server", MBM_VERSION);
   mlab::SetLogSeverity(mlab::VERBOSE);
-
-  control_port = argv[1];
 
 #ifdef USE_WEB100
     web100::Initialize();
@@ -118,7 +123,7 @@ int main(int argc, const char* argv[]) {
     used_port[i] = false;
 
   scoped_ptr<mlab::ListenSocket> socket(
-      mlab::ListenSocket::CreateOrDie(atoi(control_port)));
+      mlab::ListenSocket::CreateOrDie(FLAGS_port));
 
   while (true) {
     socket->Select();

@@ -18,6 +18,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ROOT_DIR}/lib)
 
 # Set up directories
 set(MLAB_LIBRARIES_ROOT ${PROJECT_ROOT_DIR}/third_party/m-lab)
+set(GFLAGS_ROOT ${PROJECT_ROOT_DIR}/third_party/gflags)
 set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.6.0)
 set(JSONCPP_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/json-cpp)
 
@@ -44,11 +45,13 @@ endif()
 include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
+	${GFLAGS_ROOT}/include
 	${GTEST_ROOT}/include
 	${MBM_WEB100_INCLUDE_DIRS})
 link_directories(
         ${PROJECT_ROOT_DIR}/lib
 	${MLAB_LIBRARIES_ROOT}/lib
+	${GFLAGS_ROOT}/lib
         ${JSONCPP_ROOT}/lib)
 
 file(GLOB_RECURSE SRC_FILES *.cc)
@@ -61,4 +64,5 @@ target_link_libraries(mbm_server
 	${MBM_WEB100_LIBRARIES}
 	rt
 	json-cpp
+	gflags
 	${CMAKE_THREAD_LIBS_INIT})

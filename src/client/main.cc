@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -7,32 +8,48 @@
 #include "common/config.h"
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
+#include "gflags/gflags.h"
 #include "mlab/client_socket.h"
 #include "mlab/mlab.h"
 
-int main(int argc, const char* argv[]) {
-  if (argc < 3 || argc > 4) {
-    std::cout << "Usage: " << argv[0]
-              << " <server> <control_port> [socket_type]\n";
-    return 1;
-  }
+DEFINE_string(server, "localhost", "The server to connect to");
+DEFINE_int32(port, 4242, "The port to connect to");
+DEFINE_string(socket_type, "tcp", "The transport protocol to use");
+
+namespace {
+bool ValidatePort(const char* flagname, int32_t value) {
+  if (value > 0 && value < 65536)
+    return true;
+  std::cerr << "Invalid value for --" << flagname << ": " << value << "\n";
+  return false;
+}
+
+bool ValidateSocketType(const char* flagname, const std::string& value) {
+  if (value == "udp" || value == "tcp")
+    return true;
+  std::cerr << "Invalid value for --" << flagname << ": " << value << "\n";
+  return false;
+}
+
+const bool port_validator =
+    gflags::RegisterFlagValidator(&FLAGS_port, &ValidatePort);
+const bool socket_type_validator =
+    gflags::RegisterFlagValidator(&FLAGS_socket_type, &ValidateSocketType);
+}  // namespace
+
+int main(int argc, char* argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   mlab::Initialize("mbm_client", MBM_VERSION);
   mlab::SetLogSeverity(mlab::WARNING);
 
-  mlab::Host server(argv[1]);
+  mlab::Host server(FLAGS_server);
   scoped_ptr<mlab::ClientSocket> socket(
-      mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
+      mlab::ClientSocket::CreateOrDie(server, FLAGS_port));
 
   SocketType socket_type = SOCKETTYPE_TCP;
-  if (argc == 4) {
-    if (strncmp("udp", argv[3], 3) == 0)
-      socket_type = SOCKETTYPE_UDP;
-    else if (strncmp("tcp", argv[3], 3) != 0) {
-      std::cerr << "Invalid socket type: " << argv[3] << "\n";
-      return 1;
-    }
-  }
+  if (FLAGS_socket_type == "udp")
+    socket_type = SOCKETTYPE_UDP;
 
   const mbm::Config config(socket_type, 600 * 1024, 0.0);
   socket->SendOrDie(mlab::Packet(config.AsString()));
@@ -42,8 +59,7 @@ int main(int argc, const char* argv[]) {
 
   // Create a new socket based on config.
   scoped_ptr<mlab::ClientSocket> mbm_socket(
-      mlab::ClientSocket::CreateOrDie(
-          server, port, config.socket_type));
+      mlab::ClientSocket::CreateOrDie(server, port, config.socket_type));
 
   mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
 
