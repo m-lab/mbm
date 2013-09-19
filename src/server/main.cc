@@ -59,7 +59,7 @@ void* ServerThread(void* server_config_data) {
     std::cout << "Listening on " << port << "\n";
 
     mbm_socket->Select();
-    scoped_ptr<mlab::AcceptedSocket> accepted_socket(mbm_socket->Accept());
+    mlab::AcceptedSocket* accepted_socket = mbm_socket->Accept();
 
 #ifdef USE_WEB100
     web100::CreateConnection(accepted_socket.get());
@@ -67,7 +67,7 @@ void* ServerThread(void* server_config_data) {
 
     assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
-    Result result = RunCBR(accepted_socket.get(), server_config->config);
+    Result result = RunCBR(accepted_socket, server_config->config);
     if (result == RESULT_ERROR)
       std::cerr << result_str[result];
     else

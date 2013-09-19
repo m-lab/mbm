@@ -1,7 +1,7 @@
+#include <arpa/inet.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <arpa/inet.h>
 
 #include <iostream>
 
@@ -59,15 +59,16 @@ int main(int argc, const char* argv[]) {
   // TODO(dominic): Determine best size chunk to receive.
   const size_t chunk_len = 10 * 1024;
   uint32_t bytes_total = 0;
-  ssize_t foo;
-  mlab::Packet chunk_len_pkt = mbm_socket->ReceiveX(sizeof(bytes_total), &foo);
-  bytes_total = ntohl(*((uint32_t *)chunk_len_pkt.buffer()));
+  ssize_t bytes_read;
+  mlab::Packet chunk_len_pkt = mbm_socket->ReceiveX(sizeof(bytes_total), 
+						    &bytes_read);
+  bytes_total = ntohl(chunk_len_pkt.as<uint32_t>());
   std::cout << "expecting " << bytes_total << " bytes\n";
 
   uint32_t bytes_received = 0;
   std::string recv = mbm_socket->ReceiveOrDie(chunk_len).str();
   bytes_received += recv.length();
-  while ((bytes_received < bytes_total)) {
+  while (bytes_received < bytes_total) {
     size_t remain = bytes_total - bytes_received;
     size_t read_len = remain < chunk_len ? remain : chunk_len;
     // std::cout << "." << std::flush;
