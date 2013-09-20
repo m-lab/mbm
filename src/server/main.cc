@@ -67,13 +67,13 @@ namespace mbm {
 
       assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
-      Result result = RunCBR(accepted_socket, server_config->config);
+      Result result = RunCBR(accepted_socket.get(), server_config->config);
       if (result == RESULT_ERROR)
         std::cerr << result_str[result];
       else
         std::cout << result_str[result];
-      accepted_socket->SendOrDie(
-                                 mlab::Packet(result_str[result], strlen(result_str[result])));
+      accepted_socket->SendOrDie(mlab::Packet(result_str[result], 
+                                              strlen(result_str[result])));
     }
 
     pthread_mutex_lock(&used_port_mutex);
