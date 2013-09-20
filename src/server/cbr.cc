@@ -51,7 +51,7 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
   int tcp_mss = 0;
   socklen_t mss_len = sizeof(tcp_mss);
 
-  if (socket->type() == SOCK_STREAM) {
+  if (socket->type() == SOCKETTYPE_TCP) {
     if (getsockopt(socket->raw(), 
                    IPPROTO_TCP, 
                    TCP_MAXSEG, 
@@ -65,7 +65,7 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
         return RESULT_ERROR;
       }
     }
-  } else if (socket->type() == SOCK_DGRAM) {
+  } else if (socket->type() == SOCKETTYPE_UDP) {
     tcp_mss = TCP_MSS;
   } else {
     std::cerr << "Don't understand this socket_type: " 
