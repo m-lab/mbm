@@ -30,70 +30,70 @@ extern "C" {
 
 namespace mbm {
 
-const char* control_port = NULL;
-bool used_port[NUM_PORTS];
-pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
+  const char* control_port = NULL;
+  bool used_port[NUM_PORTS];
+  pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-const char* result_str[NUM_RESULTS] = {
-  "FAIL", "PASS", "INCONCLUSIVE", "ERROR"
-};
+  const char* result_str[NUM_RESULTS] = {
+    "FAIL", "PASS", "INCONCLUSIVE", "ERROR"
+  };
 
-struct ServerConfig {
-  ServerConfig(uint16_t port, const Config& config)
+  struct ServerConfig {
+    ServerConfig(uint16_t port, const Config& config)
       : port(port), config(config) { }
-  uint16_t port;
-  Config config;
-};
+    uint16_t port;
+    Config config;
+  };
 
-void* ServerThread(void* server_config_data) {
-  scoped_ptr<ServerConfig> server_config(
-      reinterpret_cast<ServerConfig*>(server_config_data));
+  void* ServerThread(void* server_config_data) {
+    scoped_ptr<ServerConfig> server_config(
+                                           reinterpret_cast<ServerConfig*>(server_config_data));
 
-  {
-    const uint16_t port = server_config->port + BASE_PORT;
+    {
+      const uint16_t port = server_config->port + BASE_PORT;
 
-    // TODO: Consider not dying but picking a different port.
-    scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
-        port, server_config->config.socket_type));
+      // TODO: Consider not dying but picking a different port.
+      scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
+                                                                                port, server_config->config.socket_type));
 
-    std::cout << "Listening on " << port << "\n";
+      std::cout << "Listening on " << port << "\n";
 
-    mbm_socket->Select();
-    mlab::AcceptedSocket* accepted_socket = mbm_socket->Accept();
+      mbm_socket->Select();
+      scoped_ptr<mlab::AcceptedSocket> accepted_socket(mbm_socket->Accept());
 
 #ifdef USE_WEB100
-    web100::CreateConnection(accepted_socket.get());
+      web100::CreateConnection(accepted_socket.get());
 #endif
 
-    assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
+      assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
-    Result result = RunCBR(accepted_socket, server_config->config);
-    if (result == RESULT_ERROR)
-      std::cerr << result_str[result];
-    else
-      std::cout << result_str[result];
-    accepted_socket->SendOrDie(
-        mlab::Packet(result_str[result], strlen(result_str[result])));
+      Result result = RunCBR(accepted_socket, server_config->config);
+      if (result == RESULT_ERROR)
+        std::cerr << result_str[result];
+      else
+        std::cout << result_str[result];
+      accepted_socket->SendOrDie(
+                                 mlab::Packet(result_str[result], strlen(result_str[result])));
+    }
+
+    pthread_mutex_lock(&used_port_mutex);
+    used_port[server_config->port] = false;
+    pthread_mutex_unlock(&used_port_mutex);
+
+    pthread_exit(NULL);
   }
 
-  pthread_mutex_lock(&used_port_mutex);
-  used_port[server_config->port] = false;
-  pthread_mutex_unlock(&used_port_mutex);
-
-  pthread_exit(NULL);
-}
-
-uint16_t GetAvailablePort() {
-  // TODO: This could be smarter - maintain a set of unused ports, eg., and
-  // pick the first.
-  uint16_t mbm_port = 0;
-  for (; mbm_port < NUM_PORTS; ++mbm_port) {
-    if (!used_port[mbm_port])
-      break;
+  uint16_t GetAvailablePort() {
+    // TODO: This could be smarter - maintain a set of unused ports, eg., and
+    // pick the first.
+    uint16_t mbm_port = 0;
+    for (; mbm_port < NUM_PORTS; ++mbm_port) {
+      if (!used_port[mbm_port])
+        break;
+    }
+    assert(mbm_port != NUM_PORTS);
+    return mbm_port;
   }
-  assert(mbm_port != NUM_PORTS);
-  return mbm_port;
-}
 
 }  // namespace mbm
 
@@ -111,14 +111,13 @@ int main(int argc, const char* argv[]) {
   control_port = argv[1];
 
 #ifdef USE_WEB100
-    web100::Initialize();
+  web100::Initialize();
 #endif
 
   for (int i = 0; i < NUM_PORTS; ++i)
     used_port[i] = false;
 
-  scoped_ptr<mlab::ListenSocket> socket(
-      mlab::ListenSocket::CreateOrDie(atoi(control_port)));
+  scoped_ptr<mlab::ListenSocket> socket(mlab::ListenSocket::CreateOrDie(atoi(control_port)));
 
   while (true) {
     socket->Select();
@@ -127,8 +126,8 @@ int main(int argc, const char* argv[]) {
     const Config config(accepted_socket->ReceiveOrDie(1024).str());
 
     std::cout << "Setting config [" << config.socket_type << " | " <<
-                 config.cbr_kb_s << " kb/s | " <<
-                 config.loss_threshold << " %]\n";
+      config.cbr_kb_s << " kb/s | " <<
+      config.loss_threshold << " %]\n";
 
     // Pick a port.
     uint16_t mbm_port = mbm::GetAvailablePort();
@@ -147,7 +146,7 @@ int main(int argc, const char* argv[]) {
                             (void*) server_config);
     if (rc != 0) {
       std::cerr << "Failed to create thread: " << strerror(errno) <<
-                   " [" << errno << "]\n";
+        " [" << errno << "]\n";
       return 1;
     }
 
@@ -164,4 +163,3 @@ int main(int argc, const char* argv[]) {
   pthread_exit(NULL);
   return 0;
 }
-
