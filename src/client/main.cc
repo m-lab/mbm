@@ -23,7 +23,7 @@ int main(int argc, const char* argv[]) {
 
   mlab::Host server(argv[1]);
   scoped_ptr<mlab::ClientSocket> socket(
-      mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
+          mlab::ClientSocket::CreateOrDie(server, atoi(argv[2])));
 
   uint32_t rate = 600;
   if (argc >= 4) {
@@ -48,11 +48,10 @@ int main(int argc, const char* argv[]) {
 
   // Create a new socket based on config.
   scoped_ptr<mlab::ClientSocket> mbm_socket(
-      mlab::ClientSocket::CreateOrDie(
-          server, port, config.socket_type));
-
+          mlab::ClientSocket::CreateOrDie(server, port, config.socket_type));
+  
   mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
-
+  
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
   // receive and dump the data.
@@ -61,7 +60,7 @@ int main(int argc, const char* argv[]) {
   uint32_t bytes_total = 0;
   ssize_t bytes_read;
   mlab::Packet chunk_len_pkt = mbm_socket->ReceiveX(sizeof(bytes_total), 
-						    &bytes_read);
+                                                    &bytes_read);
   bytes_total = ntohl(chunk_len_pkt.as<uint32_t>());
   std::cout << "expecting " << bytes_total << " bytes\n";
 
