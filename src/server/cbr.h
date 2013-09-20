@@ -2,7 +2,7 @@
 #define SERVER_CBR_H
 
 namespace mlab {
-class Socket;
+class AcceptedSocket;
 }
 
 namespace mbm {
@@ -17,7 +17,7 @@ enum Result {
   NUM_RESULTS
 };
 
-Result RunCBR(const mlab::Socket* socket, const Config& config);
+Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config);
 
 }  // namespace mbm
 

@@ -50,21 +50,19 @@ const char* result_str[NUM_RESULTS] = {
 
 struct ServerConfig {
   ServerConfig(uint16_t port, const Config& config)
-      : port(port), config(config) { }
+    : port(port), config(config) { }
   uint16_t port;
   Config config;
 };
 
 void* ServerThread(void* server_config_data) {
-  scoped_ptr<ServerConfig> server_config(
-      reinterpret_cast<ServerConfig*>(server_config_data));
+  scoped_ptr<ServerConfig> server_config(reinterpret_cast<ServerConfig*>(server_config_data));
 
   {
     const uint16_t port = server_config->port + BASE_PORT;
 
     // TODO: Consider not dying but picking a different port.
-    scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
-        port, server_config->config.socket_type));
+    scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(port, server_config->config.socket_type));
 
     std::cout << "Listening on " << port << "\n";
 
@@ -82,8 +80,8 @@ void* ServerThread(void* server_config_data) {
       std::cerr << result_str[result];
     else
       std::cout << result_str[result];
-    accepted_socket->SendOrDie(
-        mlab::Packet(result_str[result], strlen(result_str[result])));
+    accepted_socket->SendOrDie(mlab::Packet(result_str[result], 
+                                            strlen(result_str[result])));
   }
 
   pthread_mutex_lock(&used_port_mutex);
@@ -116,7 +114,7 @@ int main(int argc, char* argv[]) {
   mlab::SetLogSeverity(mlab::VERBOSE);
 
 #ifdef USE_WEB100
-    web100::Initialize();
+  web100::Initialize();
 #endif
 
   for (int i = 0; i < NUM_PORTS; ++i)
@@ -132,8 +130,8 @@ int main(int argc, char* argv[]) {
     const Config config(accepted_socket->ReceiveOrDie(1024).str());
 
     std::cout << "Setting config [" << config.socket_type << " | " <<
-                 config.cbr_kb_s << " kb/s | " <<
-                 config.loss_threshold << " %]\n";
+      config.cbr_kb_s << " kb/s | " <<
+      config.loss_threshold << " %]\n";
 
     // Pick a port.
     uint16_t mbm_port = mbm::GetAvailablePort();
@@ -152,7 +150,7 @@ int main(int argc, char* argv[]) {
                             (void*) server_config);
     if (rc != 0) {
       std::cerr << "Failed to create thread: " << strerror(errno) <<
-                   " [" << errno << "]\n";
+        " [" << errno << "]\n";
       return 1;
     }
 
@@ -169,4 +167,3 @@ int main(int argc, char* argv[]) {
   pthread_exit(NULL);
   return 0;
 }
-
