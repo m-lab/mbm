@@ -1,14 +1,12 @@
-#ifndef CONFIG_H_
-#define CONFIG_H_
+#ifndef COMMON_CONFIG_H_
+#define COMMON_CONFIG_H_
 
 #include <stdint.h>
-
 #include <string>
 
 #include "mlab/socket_type.h"
 
 namespace mbm {
-
 class Config {
  public:
   Config(SocketType socket_type, uint32_t cbr_kb_s, double loss_threshold);
@@ -20,7 +18,6 @@ class Config {
 
   std::string AsString() const;
 };
-
 }  // namespace mbm
 
-#endif  // CONFIG_H_
+#endif  // COMMON_CONFIG_H_
