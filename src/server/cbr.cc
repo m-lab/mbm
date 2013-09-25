@@ -20,12 +20,15 @@
 #ifdef USE_WEB100
 #include "common/web100.h"
 #endif
+#include "gflags/gflags.h"
 #include "mlab/socket.h"
 #include "mlab/accepted_socket.h"
 
 // TODO: configuration
 #define TOTAL_PACKETS_TO_SEND 3000
 #define NS_PER_SEC 1000000000
+
+DECLARE_bool(verbose);
 
 namespace mbm {
 namespace {
@@ -129,11 +132,13 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
     bytes_sent += chunk_packet.length();
     ++packets_sent;
 
-    uint32_t percent = static_cast<uint32_t>(
-        static_cast<float>(100 * packets_sent) / TOTAL_PACKETS_TO_SEND);
-    if (percent > last_percent) {
-      last_percent = percent;
-      std::cout << "\r" << percent << "%" << std::flush;
+    if (FLAGS_verbose) {
+      uint32_t percent = static_cast<uint32_t>(
+          static_cast<float>(100 * packets_sent) / TOTAL_PACKETS_TO_SEND);
+      if (percent > last_percent) {
+        last_percent = percent;
+        std::cout << "\r" << percent << "%" << std::flush;
+      }
     }
 
     // figure out the start time for the next chunk

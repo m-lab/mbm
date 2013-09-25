@@ -30,6 +30,7 @@ extern "C" {
 #define NUM_PORTS 100
 
 DEFINE_int32(port, 4242, "The port to listen on");
+DEFINE_bool(verbose, false, "Verbose output");
 
 namespace {
 bool ValidatePort(const char* flagname, int32_t value) {
@@ -113,7 +114,9 @@ int main(int argc, char* argv[]) {
   using namespace mbm;
 
   mlab::Initialize("mbm_server", MBM_VERSION);
-  mlab::SetLogSeverity(mlab::VERBOSE);
+  if (FLAGS_verbose)
+    mlab::SetLogSeverity(mlab::VERBOSE);
+  gflags::SetVersionString(MBM_VERSION);
 
 #ifdef USE_WEB100
   web100::Initialize();

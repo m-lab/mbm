@@ -25,6 +25,7 @@ DEFINE_int32(minrate, 400, "The minimum rate to test when --sweep is active.");
 DEFINE_int32(maxrate, 1200, "The maximum rate to test when --sweep is active.");
 DEFINE_int32(ratestep, 100, "The step to take between rates when --sweep is "
                             "active.");
+DEFINE_bool(verbose, false, "Verbose output");
 
 namespace {
 bool ValidatePort(const char* flagname, int32_t value) {
@@ -95,11 +96,13 @@ mbm::Result Run(SocketType socket_type, int rate) {
     size_t read_len = remain < chunk_len ? remain : chunk_len;
     recv = mbm_socket->ReceiveOrDie(read_len).str();
     bytes_received += recv.length();
-    uint32_t percent = static_cast<uint32_t>(
-        static_cast<double>(100 * bytes_received) / bytes_total);
-    if (percent > last_percent) {
-      last_percent = percent;
-      std::cout << "\r" << percent << "%" << std::flush;
+    if (FLAGS_verbose) {
+      uint32_t percent = static_cast<uint32_t>(
+          static_cast<double>(100 * bytes_received) / bytes_total);
+      if (percent > last_percent) {
+        last_percent = percent;
+        std::cout << "\r" << percent << "%" << std::flush;
+      }
     }
   }
   std::cout << "\rbytes received: " << bytes_received << "\n";
@@ -116,7 +119,9 @@ int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   mlab::Initialize("mbm_client", MBM_VERSION);
-  mlab::SetLogSeverity(mlab::WARNING);
+  if (FLAGS_verbose)
+    mlab::SetLogSeverity(mlab::VERBOSE);
+  gflags::SetVersionString(MBM_VERSION);
 
   if (FLAGS_sweep) {
     // Do UDP sweep and then TCP test.
