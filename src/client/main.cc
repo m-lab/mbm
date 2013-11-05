@@ -69,7 +69,7 @@ mbm::Result Run(SocketType socket_type, int rate) {
       mlab::ClientSocket::CreateOrDie(server, port, socket_type));
 
   std::cout << "Sending READY\n";
-  mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
+  ctrl_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
 
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
@@ -78,8 +78,8 @@ mbm::Result Run(SocketType socket_type, int rate) {
   const size_t chunk_len = 10 * 1024;
   uint32_t bytes_total = 0;
   ssize_t bytes_read;
-  mlab::Packet chunk_len_pkt = mbm_socket->ReceiveX(sizeof(bytes_total),
-                                                    &bytes_read);
+  mlab::Packet chunk_len_pkt =
+      ctrl_socket->ReceiveX(sizeof(bytes_total), &bytes_read);
   bytes_total = ntohl(chunk_len_pkt.as<uint32_t>());
   std::cout << "expecting " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
@@ -107,7 +107,7 @@ mbm::Result Run(SocketType socket_type, int rate) {
   }
   std::cout << "\rbytes received: " << bytes_received << "\n";
   mbm::Result result;
-  mlab::Packet result_pkt = mbm_socket->ReceiveX(sizeof(result), &bytes_read);
+  mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);
   result = static_cast<mbm::Result>(ntohl(result_pkt.as<mbm::Result>()));
   std::cout << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " @ " << rate
             << ": " << mbm::kResultStr[result] << "\n";

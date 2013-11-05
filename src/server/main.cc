@@ -46,10 +46,17 @@ bool used_port[NUM_PORTS];
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct ServerConfig {
-  ServerConfig(uint16_t port, const Config& config)
-      : port(port), config(config) {}
+  // Takes ownership of the control socket.
+  ServerConfig(uint16_t port, const Config& config,
+               const mlab::AcceptedSocket* ctrl_socket)
+      : port(port), config(config), ctrl_socket(ctrl_socket) {}
+  ~ServerConfig() {
+    delete ctrl_socket;
+  }
+
   uint16_t port;
   Config config;
+  const mlab::AcceptedSocket* ctrl_socket;
 };
 
 void* ServerThread(void* server_config_data) {
@@ -57,6 +64,7 @@ void* ServerThread(void* server_config_data) {
       reinterpret_cast<ServerConfig*>(server_config_data));
 
   {
+    const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
     const uint16_t port = server_config->port + BASE_PORT;
 
     // TODO: Consider not dying but picking a different port.
@@ -66,25 +74,24 @@ void* ServerThread(void* server_config_data) {
     std::cout << "Listening on " << port << "\n";
 
     mbm_socket->Select();
-    scoped_ptr<mlab::AcceptedSocket> accepted_socket(mbm_socket->Accept());
+    scoped_ptr<mlab::AcceptedSocket> test_socket(mbm_socket->Accept());
 
 #ifdef USE_WEB100
-    web100::CreateConnection(accepted_socket.get());
+    web100::CreateConnection(test_socket.get());
 #endif
 
     std::cout << "Waiting for READY\n";
-    assert(accepted_socket->ReceiveOrDie(strlen(READY)).str() == READY);
+    assert(ctrl_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
-    Result result = RunCBR(accepted_socket.get(), server_config->config);
+    // TODO(dominic): Consider passing the ServerConfig entirely
+    Result result = RunCBR(test_socket.get(),
+                           ctrl_socket,
+                           server_config->config);
     if (result == RESULT_ERROR)
       std::cerr << kResultStr[result] << "\n";
     else
       std::cout << kResultStr[result] << "\n";
-    // TODO: This should be sent back on the control socket, but it no longer
-    // exists. So we need to extend the lifetime of the control socket until
-    // this thread completes, then send this packet, then delete the control
-    // socket.
-    accepted_socket->SendOrDie(mlab::Packet(htonl(result)));
+    ctrl_socket->SendOrDie(mlab::Packet(htonl(result)));
   }
 
   pthread_mutex_lock(&used_port_mutex);
@@ -131,7 +138,7 @@ int main(int argc, char* argv[]) {
   while (true) {
     socket->Select();
     std::cout << "New connection\n";
-    scoped_ptr<mlab::AcceptedSocket> ctrl_socket(socket->Accept());
+    const mlab::AcceptedSocket* ctrl_socket(socket->Accept());
 
     std::cout << "Getting config\n";
     const Config config(ctrl_socket->ReceiveOrDie(1024).str());
@@ -149,7 +156,8 @@ int main(int argc, char* argv[]) {
     // Note, the server thread will delete this.
     // TODO(dominic): This should pass the client address through to restrict
     // connections.
-    ServerConfig* server_config = new ServerConfig(mbm_port, config);
+    ServerConfig* server_config =
+        new ServerConfig(mbm_port, config, ctrl_socket);
 
     // Each server socket runs on a different thread.
     pthread_t thread;

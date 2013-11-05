@@ -45,30 +45,36 @@ uint64_t get_time_ns() {
 }
 }  // namespace
 
-Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
+Result RunCBR(const mlab::AcceptedSocket* test_socket,
+              const mlab::AcceptedSocket* ctrl_socket,
+              const Config& config) {
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
   lost_packets = 0;
 
-  int tcp_mss = 0;
+  int tcp_mss = TCP_MSS;
   socklen_t mss_len = sizeof(tcp_mss);
 
-  if (socket->type() == SOCKETTYPE_TCP) {
-    if (getsockopt(socket->raw(), IPPROTO_TCP, TCP_MAXSEG,
-                   &tcp_mss, &mss_len)) {
-      if (errno == ENOPROTOOPT) {
+  switch (test_socket->type()) {
+    case SOCKETTYPE_TCP:
+      if (getsockopt(test_socket->raw(), IPPROTO_TCP, TCP_MAXSEG,
+                     &tcp_mss, &mss_len) != 0) {
+        if (errno != ENOPROTOOPT) {
+          std::cerr << "Failed to get TCP_MAXSEG: " << strerror(errno) << "\n";
+          return RESULT_ERROR;
+        }
         std::cout << "Socket does not support TCP_MAXSEG opt. "
-                  << "Using default MSS.\n";
-      } else {
-        std::cerr << "Failed to get TCP_MAXSEG: " << strerror(errno) << "\n";
-        return RESULT_ERROR;
+                     "Using default MSS: " << TCP_MSS << ".\n";
       }
-    }
-  } else if (socket->type() == SOCKETTYPE_UDP) {
-    tcp_mss = TCP_MSS;
-  } else {
-    std::cerr << "Unknown socket_type: " << socket->type() << "\n";
-    return RESULT_ERROR;
+      break;
+
+    case SOCKETTYPE_UDP:
+      tcp_mss = TCP_MSS;
+      break;
+
+    default:
+      std::cerr << "Unknown socket_type: " << test_socket->type() << "\n";
+      return RESULT_ERROR;
   }
 
   if (config.cbr_kb_s == 0) {
@@ -95,9 +101,8 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
   std::cout << "  chunks_per_sec: " << chunks_per_sec << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
 
-  // TODO(sstuart) - move this to the control channel
   uint32_t wire_bytes_total = htonl(bytes_per_chunk * TOTAL_PACKETS_TO_SEND);
-  socket->SendOrDie(mlab::Packet(wire_bytes_total));
+  ctrl_socket->SendOrDie(mlab::Packet(wire_bytes_total));
   std::cout << "  sending " << ntohl(wire_bytes_total) << " bytes\n";
   std::cout << "  should take "
             << (1.0 * ntohl(wire_bytes_total) / bytes_per_sec) << " seconds\n";
@@ -107,10 +112,10 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
   mlab::Packet chunk_packet(chunk_data, bytes_per_chunk);
 
   // set the send buffer low
-  socket->SetSendBufferSize(bytes_per_chunk * 10);
+  test_socket->SetSendBufferSize(bytes_per_chunk * 10);
 
   // show the send buffer
-  std::cout << "  so_sndbuf: " << socket->GetSendBufferSize() << "\n"
+  std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
             << std::flush;
 
 #ifdef USE_WEB100
@@ -128,7 +133,7 @@ Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config) {
     // test to see which were lost.
     // sprintf(chunk_packet.buffer(), "%u:", packets_sent);
 
-    socket->SendOrDie(chunk_packet);
+    test_socket->SendOrDie(chunk_packet);
     bytes_sent += chunk_packet.length();
     ++packets_sent;
 

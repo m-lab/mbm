@@ -10,7 +10,9 @@ class AcceptedSocket;
 namespace mbm {
 struct Config;
 
-Result RunCBR(const mlab::AcceptedSocket* socket, const Config& config);
+Result RunCBR(const mlab::AcceptedSocket* test_socket,
+              const mlab::AcceptedSocket* ctrl_socket,
+              const Config& config);
 }  // namespace mbm
 
 #endif  // SERVER_CBR_H
