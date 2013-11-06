@@ -47,3 +47,4 @@ file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries
 add_library(mbm ${SRC_FILES})
+target_link_libraries(mbm rt)

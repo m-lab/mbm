@@ -1,7 +1,10 @@
 #ifndef COMMON_CONSTANTS_H_
 #define COMMON_CONSTANTS_H_
 
-#define MBM_VERSION "0.3"
+#define MBM_VERSION "0.4"
 #define READY       "READY"
+
+#define NS_PER_SEC  1000000000
+#define TOTAL_PACKETS_TO_SEND 3000
 
 #endif  // COMMON_CONSTANTS_H_

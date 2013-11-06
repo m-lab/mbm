@@ -62,7 +62,6 @@ target_link_libraries(mbm_server
 	mlab
 	mbm
 	${MBM_WEB100_LIBRARIES}
-	rt
 	json-cpp
 	gflags
 	${CMAKE_THREAD_LIBS_INIT})

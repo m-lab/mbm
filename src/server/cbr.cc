@@ -8,15 +8,14 @@
 #include <assert.h>
 #include <errno.h>
 #include <netinet/tcp.h>
-#include <stdio.h>
 #include <string.h>
-#include <math.h>
 
 #include <iostream>
 
-#include "common/scoped_ptr.h"
 #include "common/config.h"
 #include "common/constants.h"
+#include "common/scoped_ptr.h"
+#include "common/time.h"
 #ifdef USE_WEB100
 #include "common/web100.h"
 #endif
@@ -24,25 +23,11 @@
 #include "mlab/socket.h"
 #include "mlab/accepted_socket.h"
 
-// TODO: configuration
-#define TOTAL_PACKETS_TO_SEND 3000
-#define NS_PER_SEC 1000000000
-
 DECLARE_bool(verbose);
 
 namespace mbm {
 namespace {
 uint32_t lost_packets = 0;
-
-uint64_t get_time_ns() {
-  struct timespec time;
-#if defined(OS_FREEBSD)
-  clock_gettime(CLOCK_MONOTONIC_PRECISE, &time);
-#else
-  clock_gettime(CLOCK_MONOTONIC_RAW, &time);
-#endif
-  return time.tv_sec * NS_PER_SEC + time.tv_nsec;
-}
 }  // namespace
 
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
@@ -88,6 +73,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // we're going to meter the bytes into the socket interface in units of
   // tcp_mss
   uint32_t bytes_per_chunk = tcp_mss;
+  ctrl_socket->SendOrDie(mlab::Packet(htonl(bytes_per_chunk)));
 
   // calculate how many chunks per second we want to send
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
@@ -101,15 +87,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  chunks_per_sec: " << chunks_per_sec << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
 
-  uint32_t wire_bytes_total = htonl(bytes_per_chunk * TOTAL_PACKETS_TO_SEND);
-  ctrl_socket->SendOrDie(mlab::Packet(wire_bytes_total));
-  std::cout << "  sending " << ntohl(wire_bytes_total) << " bytes\n";
-  std::cout << "  should take "
-            << (1.0 * ntohl(wire_bytes_total) / bytes_per_sec) << " seconds\n";
+  uint32_t wire_bytes_total = bytes_per_chunk * TOTAL_PACKETS_TO_SEND;
+  std::cout << "  sending " << wire_bytes_total << " bytes\n";
+  std::cout << "  should take " << (1.0 * wire_bytes_total / bytes_per_sec)
+            << " seconds\n";
 
-  char chunk_data[bytes_per_chunk];
-  memset(chunk_data, 'x', bytes_per_chunk);
-  mlab::Packet chunk_packet(chunk_data, bytes_per_chunk);
+  char* chunk_buffer = new char[bytes_per_chunk];
+  memset(chunk_buffer, 'x', bytes_per_chunk);
 
   // set the send buffer low
   test_socket->SetSendBufferSize(bytes_per_chunk * 10);
@@ -124,20 +108,21 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t packets_sent = 0;
   uint32_t bytes_sent = 0;
   uint32_t sleep_count = 0;
-  uint64_t outer_start_time = get_time_ns();
+  uint64_t outer_start_time = GetTimeNS();
   uint32_t last_percent = 0;
   while (packets_sent < TOTAL_PACKETS_TO_SEND) {
-    // Embed sequence number.
-    // TODO: Should we do three sends, one per packet?
-    // TODO: if we're running UDP, get the sequence numbers back over TCP after
-    // test to see which were lost.
-    // sprintf(chunk_packet.buffer(), "%u:", packets_sent);
+    // Set the first 32-bits to the sequence number.
+    uint32_t seq_no = htonl(packets_sent);
+    memcpy(chunk_buffer, &seq_no, sizeof(packets_sent));
+    mlab::Packet chunk_packet(chunk_buffer, bytes_per_chunk);
 
     test_socket->SendOrDie(chunk_packet);
     bytes_sent += chunk_packet.length();
     ++packets_sent;
 
     if (FLAGS_verbose) {
+      std::cout << "  s: " << std::hex << ntohl(seq_no) << " " << std::dec
+                << ntohl(seq_no) << "\n";
       uint32_t percent = static_cast<uint32_t>(
           static_cast<float>(100 * packets_sent) / TOTAL_PACKETS_TO_SEND);
       if (percent > last_percent) {
@@ -148,7 +133,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
     // figure out the start time for the next chunk
     //
-    uint64_t curr_time = get_time_ns();
+    uint64_t curr_time = GetTimeNS();
     uint64_t next_start = outer_start_time + (packets_sent * time_per_chunk_ns);
 
     // If we have time left over, sleep the remainder.
@@ -171,16 +156,23 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       // std::cout << "o" << std::flush;
     }
   }
-  uint64_t outer_end_time = get_time_ns();
-  uint32_t delta_time = outer_end_time - outer_start_time;
+  uint64_t outer_end_time = GetTimeNS();
+  uint64_t delta_time = outer_end_time - outer_start_time;
 
-  std::cout << "\nsent " << bytes_sent;
-  std::cout << "\ntime " << 1.0 * delta_time / NS_PER_SEC << "\n" << std::flush;
+  double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
+
+  std::cout << "\nbytes sent: " << bytes_sent << "\n";
+  std::cout << "time: " << delta_time_sec << "\n";
+  std::cout << "send rate: " << bytes_sent / delta_time_sec << " b/sec\n";
 
 #ifdef USE_WEB100
   web100::Stop();
   lost_packets = web100::GetLossCount();
 #endif
+  // TODO: if we're running UDP, get the sequence numbers back over control
+  // channel to see which were lost/retransmitted.
+  // TODO: get the receive rate back over control channel to see what rate was
+  // actually achieved over the wire.
 
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  sent: " << packets_sent << "\n";

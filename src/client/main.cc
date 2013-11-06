@@ -1,5 +1,6 @@
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 #include "common/constants.h"
 #include "common/result.h"
 #include "common/scoped_ptr.h"
+#include "common/time.h"
 #include "gflags/gflags.h"
 #include "mlab/client_socket.h"
 #include "mlab/mlab.h"
@@ -27,6 +29,7 @@ DEFINE_int32(ratestep, 100, "The step to take between rates when --sweep is "
                             "active.");
 DEFINE_bool(verbose, false, "Verbose output");
 
+namespace mbm {
 namespace {
 bool ValidatePort(const char* flagname, int32_t value) {
   if (value > 0 && value < 65536)
@@ -47,7 +50,7 @@ const bool port_validator =
 const bool socket_type_validator =
     gflags::RegisterFlagValidator(&FLAGS_socket_type, &ValidateSocketType);
 
-mbm::Result Run(SocketType socket_type, int rate) {
+Result Run(SocketType socket_type, int rate) {
   std::cout << "Running MBM test over "
             << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " at "
             << rate << " kbps\n";
@@ -57,7 +60,7 @@ mbm::Result Run(SocketType socket_type, int rate) {
       mlab::ClientSocket::CreateOrDie(server, FLAGS_port));
 
   std::cout << "Sending config\n";
-  const mbm::Config config(socket_type, rate, 0.0);
+  const Config config(socket_type, rate, 0.0);
   ctrl_socket->SendOrDie(mlab::Packet(config.AsString()));
 
   std::cout << "Getting port\n";
@@ -74,28 +77,41 @@ mbm::Result Run(SocketType socket_type, int rate) {
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
   // receive and dump the data.
-  // TODO(dominic): Determine best size chunk to receive.
-  const size_t chunk_len = 10 * 1024;
-  uint32_t bytes_total = 0;
+  uint32_t chunk_len = 0;
   ssize_t bytes_read;
   mlab::Packet chunk_len_pkt =
-      ctrl_socket->ReceiveX(sizeof(bytes_total), &bytes_read);
-  bytes_total = ntohl(chunk_len_pkt.as<uint32_t>());
+      ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read);
+  chunk_len = ntohl(chunk_len_pkt.as<uint32_t>());
+  uint32_t bytes_total = chunk_len * TOTAL_PACKETS_TO_SEND;
   std::cout << "expecting " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
     std::cerr << "Something went wrong. The server might have died.\n";
-    return mbm::RESULT_ERROR;
+    return RESULT_ERROR;
   }
 
+  uint64_t start_time = GetTimeNS();
+  std::vector<uint32_t> seq_nos;
   uint32_t bytes_received = 0;
   uint32_t last_percent = 0;
-  std::string recv = mbm_socket->ReceiveOrDie(chunk_len).str();
+  mlab::Packet recv = mbm_socket->ReceiveOrDie(chunk_len);
+  if (recv.length() == 0) {
+    std::cerr << "Something went wrong. The server might have died: "
+              << strerror(errno) << "\n";
+    return RESULT_ERROR;
+  }
   bytes_received += recv.length();
+  seq_nos.push_back(ntohl(recv.as<uint32_t>()));
   while (bytes_received < bytes_total) {
     size_t remain = bytes_total - bytes_received;
     size_t read_len = remain < chunk_len ? remain : chunk_len;
-    recv = mbm_socket->ReceiveOrDie(read_len).str();
+    recv = mbm_socket->ReceiveX(read_len, &bytes_read);
+    if (recv.length() == 0) {
+      std::cerr << "Something went wrong. The server might have died: "
+                << strerror(errno) << "\n";
+      return RESULT_ERROR;
+    }
     bytes_received += recv.length();
+    seq_nos.push_back(ntohl(recv.as<uint32_t>()));
     if (FLAGS_verbose) {
       uint32_t percent = static_cast<uint32_t>(
           static_cast<double>(100 * bytes_received) / bytes_total);
@@ -105,29 +121,47 @@ mbm::Result Run(SocketType socket_type, int rate) {
       }
     }
   }
-  std::cout << "\rbytes received: " << bytes_received << "\n";
-  mbm::Result result;
+  uint64_t end_time = GetTimeNS();
+
+  if (FLAGS_verbose) {
+    for (std::vector<uint32_t>::const_iterator it = seq_nos.begin();
+         it != seq_nos.end(); ++it) {
+      std::cout << "  s: " << std::hex << *it << " " << std::dec << *it << "\n";
+    }
+  }
+
+  uint64_t delta_time = end_time - start_time;
+  double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
+
+  std::cout << "\nbytes received: " << bytes_received << "\n";
+  std::cout << "time: " << delta_time_sec << "\n";
+  std::cout << "receive rate: " << bytes_received / delta_time_sec
+            << " b/sec\n";
+
+  Result result;
   mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);
-  result = static_cast<mbm::Result>(ntohl(result_pkt.as<mbm::Result>()));
+  result = static_cast<Result>(ntohl(result_pkt.as<Result>()));
   std::cout << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " @ " << rate
-            << ": " << mbm::kResultStr[result] << "\n";
+            << ": " << kResultStr[result] << "\n";
   return result;
 }
 }  // namespace
+}  // namespace mbm
 
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  mlab::Initialize("mbm_client", MBM_VERSION);
+  mlab::SetLogSeverity(mlab::WARNING);
   if (FLAGS_verbose)
     mlab::SetLogSeverity(mlab::VERBOSE);
+  mlab::Initialize("mbm_client", MBM_VERSION);
   gflags::SetVersionString(MBM_VERSION);
 
   if (FLAGS_sweep) {
     // Do UDP sweep and then TCP test.
     int rate = FLAGS_minrate;
     for (; rate <= FLAGS_maxrate; rate += FLAGS_ratestep) {
-      mbm::Result result = Run(SOCKETTYPE_UDP, rate);
+      mbm::Result result = mbm::Run(SOCKETTYPE_UDP, rate);
       if (result == mbm::RESULT_FAIL) {
         if (rate == FLAGS_minrate) {
           std::cerr << "Minimum rate " << FLAGS_minrate << " kbps is too "
@@ -145,14 +179,14 @@ int main(int argc, char* argv[]) {
       std::cerr << "Maxmimum rate " << FLAGS_maxrate << " kbps is too low\n";
       return 1;
     }
-    Run(SOCKETTYPE_TCP, rate - FLAGS_ratestep);
+    mbm::Run(SOCKETTYPE_TCP, rate - FLAGS_ratestep);
   } else {
     // Single run at a given rate.
     SocketType mbm_socket_type = SOCKETTYPE_TCP;
     if (FLAGS_socket_type == "udp")
       mbm_socket_type = SOCKETTYPE_UDP;
 
-    Run(mbm_socket_type, FLAGS_rate);
+    mbm::Run(mbm_socket_type, FLAGS_rate);
   }
 
   return 0;
