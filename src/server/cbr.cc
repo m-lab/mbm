@@ -26,16 +26,11 @@
 DECLARE_bool(verbose);
 
 namespace mbm {
-namespace {
-uint32_t lost_packets = 0;
-}  // namespace
 
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
-
-  lost_packets = 0;
 
   int tcp_mss = TCP_MSS;
   socklen_t mss_len = sizeof(tcp_mss);
@@ -165,18 +160,32 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "time: " << delta_time_sec << "\n";
   std::cout << "send rate: " << bytes_sent / delta_time_sec << " b/sec\n";
 
+  uint32_t lost_packets = 0;
+  uint32_t unacked_bytes = 0;
+  uint32_t rtt_sec = 0;
+
 #ifdef USE_WEB100
   web100::Stop();
-  lost_packets = web100::GetLossCount();
+  lost_packets = web100::PacketRetransCount();
+  unacked_bytes = web100::UnackedBytes();
+  rtt_sec = web100::RTTSeconds();
 #endif
-  // TODO: if we're running UDP, get the sequence numbers back over control
-  // channel to see which were lost/retransmitted.
-  // TODO: get the receive rate back over control channel to see what rate was
-  // actually achieved over the wire.
+
+  // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
+  // back over control channel to see which were lost/retransmitted.
+  // TODO(dominic): Issue #9: get the receive rate back over control channel to
+  // see what rate was actually achieved over the wire.
 
   std::cout << "  lost: " << lost_packets << "\n";
+  std::cout << "  unacked: " << unacked_bytes << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
+
+  if (unacked_bytes / rtt_sec < bytes_per_sec) {
+    std::cout << "  kept up\n";
+  } else {
+    std::cout << "  failed to keep up\n";
+  }
 
   double loss_ratio = static_cast<double>(lost_packets) / packets_sent;
   if (loss_ratio > 1.0)

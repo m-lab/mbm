@@ -4,6 +4,7 @@
 #define MBM_VERSION "0.5"
 #define READY       "READY"
 
+#define MS_PER_SEC  1000
 #define NS_PER_SEC  1000000000
 #define TOTAL_PACKETS_TO_SEND 3000
 

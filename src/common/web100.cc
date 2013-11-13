@@ -5,36 +5,54 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
-
 extern "C" {
 #include <web100/web100.h>
 }
 
-#include "mlab/client_socket.h"
-#include "mlab/server_socket.h"
+#include <string>
+
+#include "common/constants.h"
+#include "mlab/socket.h"
 
 namespace web100 {
 namespace {
-
+web100_connection* connection = NULL;
 web100_agent* agent = NULL;
-web100_var* var = NULL;
-web100_group* group = NULL;
 web100_snapshot* before = NULL;
 web100_snapshot* after = NULL;
 
-web100_connection* CreateConnection(int sock_fd) {
-  web100_connection* connection = web100_connection_from_socket(agent, sock_fd);
-  if (connection == NULL) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
+class Var {
+ public:
+  explicit Var(const std::string& name)
+      : var_(NULL), group_(NULL) {
+    int found =
+        web100_agent_find_var_and_group(agent, "PktsRetrans", &group_, &var_);
+    if (found != WEB100_ERR_SUCCESS) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
   }
-  return connection;
-}
+
+  // TODO(dominic): Add 'read' function here.
+
+  web100_var* var() const { return var_; }
+  web100_group* group() const { return group_; }
+
+ private:
+  web100_var* var_;
+  web100_group* group_;
+};
+
+Var* pktsretrans = NULL;
+Var* curretxqueue = NULL;
+Var* currappwqueue = NULL;
+Var* sampledrtt = NULL;
 
 void AllocateSnapshots(web100_connection* connection) {
-  before = web100_snapshot_alloc(group, connection);
-  after = web100_snapshot_alloc(group, connection);
+  // Only for the packets retrans var for now.
+  before = web100_snapshot_alloc(pktsretrans->group(), connection);
+  after = web100_snapshot_alloc(pktsretrans->group(), connection);
   assert(before != NULL);
   assert(after != NULL);
 }
@@ -49,23 +67,20 @@ void Initialize() {
     assert(false);
   }
 
-  int found = web100_agent_find_var_and_group(agent, "PktsRetrans", &group, &var);
-  if (found != WEB100_ERR_SUCCESS) {
+  pktsretrans = new Var("PktsRetrans");
+  curretxqueue = new Var("CurRetxQueue");
+  currappwqueue = new Var("CurAppWQueue");
+  sampledrtt = new Var("SampledRTT");
+}
+
+void CreateConnection(const mlab::Socket* socket) {
+  connection = web100_connection_from_socket(agent, socket->raw());
+  if (connection == NULL) {
     web100_perror("web100");
     perror("sys");
     assert(false);
   }
-
-  assert(web100_get_var_type(var) == WEB100_TYPE_COUNTER32);
-  assert(web100_get_var_size(var) == sizeof(uint32_t));
-}
-
-void CreateConnection(const mlab::ServerSocket* socket) {
-  AllocateSnapshots(CreateConnection(socket->client_raw()));
-}
-
-void CreateConnection(const mlab::ClientSocket* socket) {
-  AllocateSnapshots(CreateConnection(socket->raw()));
+  AllocateSnapshots(connection);
 }
 
 void Start() {
@@ -78,15 +93,54 @@ void Stop() {
   web100_snap(after);
 }
 
-uint32_t GetLossCount() {
+uint32_t PacketRetransCount() {
   assert(before != NULL);
   assert(after != NULL);
   uint32_t result;
-  web100_delta_any(var, after, before, &result);
+  web100_delta_any(pktsretrans->var(), after, before, &result);
   return result;
 }
 
+uint32_t UnackedBytes() {
+  // TODO(dominic): This should probably use the snapshot from Stop.
+  uint32_t retxqueue;
+  if (web100_raw_read(curretxqueue->var(), connection, &retxqueue) !=
+      WEB100_ERR_SUCCESS) {
+    web100_perror("web100");
+    perror("sys");
+    assert(false);
+  }
+
+  uint32_t appwqueue;
+  if (web100_raw_read(currappwqueue->var(), connection, &appwqueue) !=
+      WEB100_ERR_SUCCESS) {
+    web100_perror("web100");
+    perror("sys");
+    assert(false);
+  }
+
+  return appwqueue + retxqueue;
+}
+
+uint32_t RTTSeconds() {
+  // TODO(dominic): This should probably use the snapshot from Stop.
+  uint32_t rtt_ms;
+  if (web100_raw_read(sampledrtt->var(), connection, &rtt_ms) !=
+      WEB100_ERR_SUCCESS) {
+    web100_perror("web100");
+    perror("sys");
+    assert(false);
+  }
+
+  return rtt_ms / MS_PER_SEC;
+}
+
 void Shutdown() {
+  delete sampledrtt;
+  delete curretxqueue;
+  delete currappwqueue;
+  delete pktsretrans;
+
   web100_snapshot_free(after);
   web100_snapshot_free(before);
   web100_detach(agent);

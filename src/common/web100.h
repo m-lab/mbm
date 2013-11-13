@@ -8,18 +8,22 @@
 #include <stdint.h>
 
 namespace mlab {
-class ClientSocket;
-class ServerSocket;
+class Socket;
 }  // namespace mlab
 
 namespace web100 {
 
 void Initialize();
-void CreateConnection(const mlab::ServerSocket* socket);
-void CreateConnection(const mlab::ClientSocket* socket);
+
+void CreateConnection(const mlab::Socket* socket);
+
 void Start();
 void Stop();
-uint32_t GetLossCount();
+
+uint32_t PacketRetransCount();
+uint32_t UnackedBytes();
+uint32_t RTTSeconds();
+
 void Shutdown();
 
 }  // namespace web100
