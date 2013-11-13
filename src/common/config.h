@@ -9,14 +9,12 @@
 namespace mbm {
 class Config {
  public:
+  Config();
   Config(SocketType socket_type, uint32_t cbr_kb_s, double loss_threshold);
-  Config(const std::string& str);
 
   SocketType socket_type;
   uint32_t cbr_kb_s;
   double loss_threshold;
-
-  std::string AsString() const;
 };
 }  // namespace mbm
 

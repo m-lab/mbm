@@ -11,7 +11,6 @@ extern "C" {
 #endif
 
 #include <iostream>
-#include <sstream>
 
 #include "common/config.h"
 #include "common/constants.h"
@@ -72,6 +71,10 @@ void* ServerThread(void* server_config_data) {
         port, server_config->config.socket_type));
 
     std::cout << "Listening on " << port << "\n";
+
+    // Let the client know that they can connect.
+    std::cout << "Telling client to connect on port " << port << "\n";
+    ctrl_socket->SendOrDie(mlab::Packet(htons(port)));
 
     mbm_socket->Select();
     scoped_ptr<mlab::AcceptedSocket> test_socket(mbm_socket->Accept());
@@ -142,7 +145,8 @@ int main(int argc, char* argv[]) {
     const mlab::AcceptedSocket* ctrl_socket(socket->Accept());
 
     std::cout << "Getting config\n";
-    const Config config(ctrl_socket->ReceiveOrDie(1024).str());
+    const Config config =
+        ctrl_socket->ReceiveOrDie(sizeof(Config)).as<Config>();
 
     std::cout << "Setting config [" << config.socket_type << " | "
               << config.cbr_kb_s << " kb/s | " << config.loss_threshold
@@ -171,13 +175,6 @@ int main(int argc, char* argv[]) {
                 << errno << "]\n";
       return 1;
     }
-
-    // Let the client know that they can connect.
-    std::stringstream ss;
-    ss << mbm_port + BASE_PORT;
-    std::cout << "Telling client to connect on port " << (mbm_port + BASE_PORT)
-              << "\n";
-    ctrl_socket->SendOrDie(mlab::Packet(ss.str()));
   }
 
 #ifdef USE_WEB100

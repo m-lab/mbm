@@ -61,10 +61,11 @@ Result Run(SocketType socket_type, int rate) {
 
   std::cout << "Sending config\n";
   const Config config(socket_type, rate, 0.0);
-  ctrl_socket->SendOrDie(mlab::Packet(config.AsString()));
+  ctrl_socket->SendOrDie(mlab::Packet(config));
 
   std::cout << "Getting port\n";
-  uint16_t port = atoi(ctrl_socket->ReceiveOrDie(16).str().c_str());
+  uint16_t port =
+      ntohs(ctrl_socket->ReceiveOrDie(sizeof(uint16_t)).as<uint16_t>());
 
   std::cout << "Connecting on port " << port << "\n";
   // Create a new socket based on config.
@@ -77,11 +78,9 @@ Result Run(SocketType socket_type, int rate) {
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
   // receive and dump the data.
-  uint32_t chunk_len = 0;
   ssize_t bytes_read;
-  mlab::Packet chunk_len_pkt =
-      ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read);
-  chunk_len = ntohl(chunk_len_pkt.as<uint32_t>());
+  const uint32_t chunk_len = ntohl(
+      ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
   uint32_t bytes_total = chunk_len * TOTAL_PACKETS_TO_SEND;
   std::cout << "expecting " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
