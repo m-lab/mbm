@@ -74,6 +74,9 @@ Result Run(SocketType socket_type, int rate) {
 
   std::cout << "Sending READY\n";
   ctrl_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
+  // TODO: There may need to be a 'wait for ready-ack' loop if mbm_socket is UDP
+  // and loss is high.
+  mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
 
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is

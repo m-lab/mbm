@@ -85,6 +85,9 @@ void* ServerThread(void* server_config_data) {
 
     std::cout << "Waiting for READY\n";
     assert(ctrl_socket->ReceiveOrDie(strlen(READY)).str() == READY);
+    // TODO(dominic): This may need to become a while loop if test_socket is UDP
+    // and loss is high.
+    assert(test_socket->ReceiveOrDie(strlen(READY)).str() == READY);
 
     // TODO(dominic): Consider passing the ServerConfig entirely
     Result result = RunCBR(test_socket.get(),
