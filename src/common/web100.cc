@@ -16,47 +16,97 @@ extern "C" {
 
 namespace web100 {
 namespace {
-web100_connection* connection = NULL;
 web100_agent* agent = NULL;
-web100_snapshot* before = NULL;
-web100_snapshot* after = NULL;
 
 class Var {
  public:
-  explicit Var(const std::string& name)
-      : var_(NULL), group_(NULL) {
-    int found =
-        web100_agent_find_var_and_group(agent, "PktsRetrans", &group_, &var_);
-    if (found != WEB100_ERR_SUCCESS) {
+  explicit Var(const std::string& name, web100_connection* connection)
+      : var_(NULL),
+        group_(NULL),
+        before_(NULL),
+        after_(NULL),
+        started(false),
+        stopped(false) {
+    assert(agent != NULL);
+    assert(connection != NULL);
+
+    if (web100_agent_find_var_and_group(agent, "PktsRetrans", &group_, &var_) !=
+        WEB100_ERR_SUCCESS) {
       web100_perror("web100");
       perror("sys");
       assert(false);
     }
+
+    before_ = web100_snapshot_alloc(group_, connection);
+    assert(before_ != NULL);
+
+    after_ = web100_snapshot_alloc(group_, connection);
+    assert(after_ != NULL);
   }
 
-  // TODO(dominic): Add 'read' function here.
+  ~Var() {
+    web100_snapshot_free(after_);
+    web100_snapshot_free(before_);
+  }
 
-  web100_var* var() const { return var_; }
-  web100_group* group() const { return group_; }
+  void start() {
+    assert(!started);
+    assert(!stopped);
+    if (web100_snap(before_) != WEB100_ERR_SUCCESS) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
+    started = true;
+  }
+
+  void stop() {
+    assert(!stopped);
+    if (web100_snap(after_) != WEB100_ERR_SUCCESS) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
+    stopped = true;
+  }
+
+  // TODO(dominic): assume counter32 or gauge32 types. should be more general.
+  uint32_t delta() const {
+    assert(started && stopped);
+    uint32_t delta;
+    if (web100_delta_any(var_, after_, before_, &delta) != WEB100_ERR_SUCCESS) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
+    return delta;
+  }
+
+  uint32_t get() const {
+    assert(stopped);
+    uint32_t result;
+    if (web100_snap_read(var_, after_, &result) != WEB100_ERR_SUCCESS) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
+    return result;
+  }
 
  private:
   web100_var* var_;
   web100_group* group_;
+  web100_snapshot* before_;
+  web100_snapshot* after_;
+
+  bool started;
+  bool stopped;
 };
 
 Var* pktsretrans = NULL;
 Var* curretxqueue = NULL;
 Var* currappwqueue = NULL;
 Var* sampledrtt = NULL;
-
-void AllocateSnapshots(web100_connection* connection) {
-  // Only for the packets retrans var for now.
-  before = web100_snapshot_alloc(pktsretrans->group(), connection);
-  after = web100_snapshot_alloc(pktsretrans->group(), connection);
-  assert(before != NULL);
-  assert(after != NULL);
-}
-
 }  // namespace
 
 void Initialize() {
@@ -66,73 +116,44 @@ void Initialize() {
     perror("sys");
     assert(false);
   }
-
-  pktsretrans = new Var("PktsRetrans");
-  curretxqueue = new Var("CurRetxQueue");
-  currappwqueue = new Var("CurAppWQueue");
-  sampledrtt = new Var("SampledRTT");
 }
 
 void CreateConnection(const mlab::Socket* socket) {
-  connection = web100_connection_from_socket(agent, socket->raw());
+  web100_connection* connection =
+      web100_connection_from_socket(agent, socket->raw());
   if (connection == NULL) {
     web100_perror("web100");
     perror("sys");
     assert(false);
   }
-  AllocateSnapshots(connection);
+
+  pktsretrans = new Var("PktsRetrans", connection);
+  curretxqueue = new Var("CurRetxQueue", connection);
+  currappwqueue = new Var("CurAppWQueue", connection);
+  sampledrtt = new Var("SampledRTT", connection);
 }
 
 void Start() {
-  assert(before != NULL);
-  web100_snap(before);
+  pktsretrans->start();
 }
 
 void Stop() {
-  assert(after != NULL);
-  web100_snap(after);
+  pktsretrans->stop();
+  curretxqueue->stop();
+  currappwqueue->stop();
+  sampledrtt->stop();
 }
 
 uint32_t PacketRetransCount() {
-  assert(before != NULL);
-  assert(after != NULL);
-  uint32_t result;
-  web100_delta_any(pktsretrans->var(), after, before, &result);
-  return result;
+  return pktsretrans->delta();
 }
 
 uint32_t UnackedBytes() {
-  // TODO(dominic): This should probably use the snapshot from Stop.
-  uint32_t retxqueue;
-  if (web100_raw_read(curretxqueue->var(), connection, &retxqueue) !=
-      WEB100_ERR_SUCCESS) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
-  }
-
-  uint32_t appwqueue;
-  if (web100_raw_read(currappwqueue->var(), connection, &appwqueue) !=
-      WEB100_ERR_SUCCESS) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
-  }
-
-  return appwqueue + retxqueue;
+  return curretxqueue->get() + currappwqueue->get();
 }
 
 float RTTSeconds() {
-  // TODO(dominic): This should probably use the snapshot from Stop.
-  uint32_t rtt_ms;
-  if (web100_raw_read(sampledrtt->var(), connection, &rtt_ms) !=
-      WEB100_ERR_SUCCESS) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
-  }
-
-  return static_cast<float>(rtt_ms) / MS_PER_SEC;
+  return static_cast<float>(sampledrtt->get()) / MS_PER_SEC;
 }
 
 void Shutdown() {
@@ -141,11 +162,8 @@ void Shutdown() {
   delete currappwqueue;
   delete pktsretrans;
 
-  web100_snapshot_free(after);
-  web100_snapshot_free(before);
   web100_detach(agent);
 }
-
 }  // namespace web100
 
 #endif  // USE_WEB100
