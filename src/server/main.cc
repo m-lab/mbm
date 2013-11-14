@@ -79,10 +79,6 @@ void* ServerThread(void* server_config_data) {
     mbm_socket->Select();
     scoped_ptr<mlab::AcceptedSocket> test_socket(mbm_socket->Accept());
 
-#ifdef USE_WEB100
-    web100::CreateConnection(test_socket.get());
-#endif
-
     std::cout << "Waiting for READY\n";
     assert(ctrl_socket->ReceiveOrDie(strlen(READY)).str() == READY);
     // TODO(dominic): This may need to become a while loop if test_socket is UDP

@@ -30,6 +30,10 @@ namespace mbm {
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
+#ifdef USE_WEB100
+  web100::CreateConnection(test_socket);
+#endif
+
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
   int tcp_mss = TCP_MSS;
