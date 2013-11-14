@@ -122,7 +122,7 @@ uint32_t UnackedBytes() {
   return appwqueue + retxqueue;
 }
 
-uint32_t RTTSeconds() {
+float RTTSeconds() {
   // TODO(dominic): This should probably use the snapshot from Stop.
   uint32_t rtt_ms;
   if (web100_raw_read(sampledrtt->var(), connection, &rtt_ms) !=
@@ -132,7 +132,7 @@ uint32_t RTTSeconds() {
     assert(false);
   }
 
-  return rtt_ms / MS_PER_SEC;
+  return static_cast<float>(rtt_ms) / MS_PER_SEC;
 }
 
 void Shutdown() {

@@ -22,7 +22,7 @@ void Stop();
 
 uint32_t PacketRetransCount();
 uint32_t UnackedBytes();
-uint32_t RTTSeconds();
+float RTTSeconds();
 
 void Shutdown();
 

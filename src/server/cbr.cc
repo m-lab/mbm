@@ -181,10 +181,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  sent: " << packets_sent << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
 
-  if (unacked_bytes / rtt_sec < bytes_per_sec) {
-    std::cout << "  kept up\n";
+  if (rtt_sec > 0.0) {
+    if (unacked_bytes / rtt_sec < bytes_per_sec) {
+      std::cout << "  kept up\n";
+    } else {
+      std::cout << "  failed to keep up\n";
+    }
   } else {
-    std::cout << "  failed to keep up\n";
+    std::cout << "  rtt 0\n";
   }
 
   double loss_ratio = static_cast<double>(lost_packets) / packets_sent;
