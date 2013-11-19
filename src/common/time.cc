@@ -12,6 +12,6 @@ uint64_t GetTimeNS() {
 #else
   clock_gettime(CLOCK_MONOTONIC_RAW, &time);
 #endif
-  return time.tv_sec * NS_PER_SEC + time.tv_nsec;
+  return static_cast<uint64_t>(time.tv_sec) * NS_PER_SEC + time.tv_nsec;
 }
 }
