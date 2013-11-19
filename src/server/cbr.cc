@@ -165,14 +165,16 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "send rate: " << bytes_sent / delta_time_sec << " b/sec\n";
 
   uint32_t lost_packets = 0;
-  uint32_t unacked_bytes = 0;
-  uint32_t rtt_sec = 0;
+  uint32_t application_write_queue = 0;
+  uint32_t retransmit_queue = 0;
+  double rtt_sec = 0.0;
 
 #ifdef USE_WEB100
   web100::Stop();
   lost_packets = web100::PacketRetransCount();
-  unacked_bytes = web100::UnackedBytes();
-  rtt_sec = web100::RTTSeconds();
+  application_write_queue = web100::ApplicationWriteQueueSize();
+  retransmit_queue = web100::RetransmitQueueSize();
+  rtt_sec = static_cast<double>(web100::SampleRTT()) / MS_PER_SEC;
 #endif
 
   // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
@@ -181,12 +183,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // see what rate was actually achieved over the wire.
 
   std::cout << "  lost: " << lost_packets << "\n";
-  std::cout << "  unacked: " << unacked_bytes << "\n";
+  std::cout << "  write queue: " << application_write_queue << "\n";
+  std::cout << "  retransmit queue: " << retransmit_queue << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
 
   if (rtt_sec > 0.0) {
-    if (unacked_bytes / rtt_sec < bytes_per_sec) {
+    if ((application_write_queue + retransmit_queue) / rtt_sec <
+        bytes_per_sec) {
       std::cout << "  kept up\n";
     } else {
       std::cout << "  failed to keep up\n";

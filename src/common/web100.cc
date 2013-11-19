@@ -105,8 +105,8 @@ class Var {
 
 Var* pktsretrans = NULL;
 Var* curretxqueue = NULL;
-Var* currappwqueue = NULL;
-Var* sampledrtt = NULL;
+Var* curappwqueue = NULL;
+Var* samplertt = NULL;
 }  // namespace
 
 void Initialize() {
@@ -129,8 +129,8 @@ void CreateConnection(const mlab::Socket* socket) {
 
   pktsretrans = new Var("PktsRetrans", connection);
   curretxqueue = new Var("CurRetxQueue", connection);
-  currappwqueue = new Var("CurAppWQueue", connection);
-  sampledrtt = new Var("SampledRTT", connection);
+  curappwqueue = new Var("CurAppWQueue", connection);
+  samplertt = new Var("SampleRTT", connection);
 }
 
 void Start() {
@@ -140,26 +140,30 @@ void Start() {
 void Stop() {
   pktsretrans->stop();
   curretxqueue->stop();
-  currappwqueue->stop();
-  sampledrtt->stop();
+  curappwqueue->stop();
+  samplertt->stop();
 }
 
 uint32_t PacketRetransCount() {
   return pktsretrans->delta();
 }
 
-uint32_t UnackedBytes() {
-  return curretxqueue->get() + currappwqueue->get();
+uint32_t RetransmitQueueSize() {
+  return curretxqueue->get();
 }
 
-float RTTSeconds() {
-  return static_cast<float>(sampledrtt->get()) / MS_PER_SEC;
+uint32_t ApplicationWriteQueueSize() {
+  return curappwqueue->get();
+}
+
+uint32_t SampleRTT() {
+  return samplertt->get();
 }
 
 void Shutdown() {
-  delete sampledrtt;
+  delete samplertt;
   delete curretxqueue;
-  delete currappwqueue;
+  delete curappwqueue;
   delete pktsretrans;
 
   web100_detach(agent);

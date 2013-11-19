@@ -21,8 +21,9 @@ void Start();
 void Stop();
 
 uint32_t PacketRetransCount();
-uint32_t UnackedBytes();
-float RTTSeconds();
+uint32_t RetransmitQueueSize();
+uint32_t ApplicationWriteQueueSize();
+uint32_t SampleRTT();
 
 void Shutdown();
 
