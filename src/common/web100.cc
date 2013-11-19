@@ -30,7 +30,7 @@ class Var {
     assert(agent != NULL);
     assert(connection != NULL);
 
-    if (web100_agent_find_var_and_group(agent, "PktsRetrans", &group_, &var_) !=
+    if (web100_agent_find_var_and_group(agent, name.c_str(), &group_, &var_) !=
         WEB100_ERR_SUCCESS) {
       web100_perror("web100");
       perror("sys");
@@ -116,6 +116,7 @@ void Initialize() {
     perror("sys");
     assert(false);
   }
+  std::cout << "web100 agent: " << agent->version << "\n";
 }
 
 void CreateConnection(const mlab::Socket* socket) {
