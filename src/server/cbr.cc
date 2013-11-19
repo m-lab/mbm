@@ -164,7 +164,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   std::cout << "\nbytes sent: " << bytes_sent << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
-  std::cout << "send rate: " << bytes_sent / delta_time_sec << " b/sec\n";
+  std::cout << "send rate: " << (bytes_sent*8) / delta_time_sec << " b/sec\n";
 
   uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;

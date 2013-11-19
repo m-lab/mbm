@@ -138,7 +138,7 @@ Result Run(SocketType socket_type, int rate) {
 
   std::cout << "\nbytes received: " << bytes_received << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
-  std::cout << "receive rate: " << bytes_received / delta_time_sec
+  std::cout << "receive rate: " << (bytes_received*8) / delta_time_sec
             << " b/sec\n";
 
   Result result;
