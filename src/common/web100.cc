@@ -116,7 +116,6 @@ void Initialize() {
     perror("sys");
     assert(false);
   }
-  std::cout << "web100 agent: " << agent->version << "\n";
 }
 
 void CreateConnection(const mlab::Socket* socket) {
