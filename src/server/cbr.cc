@@ -31,7 +31,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
 #ifdef USE_WEB100
-  web100::CreateConnection(test_socket);
+  if (test_socket->type() == SOCKETTYPE_TCP)
+    web100::CreateConnection(test_socket);
 #endif
 
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
@@ -102,7 +103,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
             << std::flush;
 
 #ifdef USE_WEB100
-  web100::Start();
+  if (test_socket->type() == SOCKETTYPE_TCP)
+    web100::Start();
 #endif
   uint32_t packets_sent = 0;
   uint32_t bytes_sent = 0;
@@ -131,7 +133,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
 
     // figure out the start time for the next chunk
-    //
     uint64_t curr_time = GetTimeNS();
     uint64_t next_start = outer_start_time + (packets_sent * time_per_chunk_ns);
 
@@ -170,11 +171,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double rtt_sec = 0.0;
 
 #ifdef USE_WEB100
-  web100::Stop();
-  lost_packets = web100::PacketRetransCount();
-  application_write_queue = web100::ApplicationWriteQueueSize();
-  retransmit_queue = web100::RetransmitQueueSize();
-  rtt_sec = static_cast<double>(web100::SampleRTT()) / MS_PER_SEC;
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    web100::Stop();
+    lost_packets = web100::PacketRetransCount();
+    application_write_queue = web100::ApplicationWriteQueueSize();
+    retransmit_queue = web100::RetransmitQueueSize();
+    rtt_sec = static_cast<double>(web100::SampleRTT()) / MS_PER_SEC;
+  }
 #endif
 
   // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
@@ -185,6 +188,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  write queue: " << application_write_queue << "\n";
   std::cout << "  retransmit queue: " << retransmit_queue << "\n";
+  std::cout << "  rtt: " << rtt_sec << "\n";
   std::cout << "  sent: " << packets_sent << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
 
@@ -195,8 +199,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     } else {
       std::cout << "  failed to keep up\n";
     }
-  } else {
-    std::cout << "  rtt 0\n";
   }
 
   double loss_ratio = static_cast<double>(lost_packets) / packets_sent;
