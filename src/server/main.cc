@@ -122,10 +122,10 @@ int main(int argc, char* argv[]) {
 
   using namespace mbm;
 
+  mlab::Initialize("mbm_server", MBM_VERSION);
   mlab::SetLogSeverity(mlab::WARNING);
   if (FLAGS_verbose)
     mlab::SetLogSeverity(mlab::VERBOSE);
-  mlab::Initialize("mbm_server", MBM_VERSION);
   gflags::SetVersionString(MBM_VERSION);
 
 #ifdef USE_WEB100

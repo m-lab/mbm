@@ -153,10 +153,10 @@ Result Run(SocketType socket_type, int rate) {
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
+  mlab::Initialize("mbm_client", MBM_VERSION);
   mlab::SetLogSeverity(mlab::WARNING);
   if (FLAGS_verbose)
     mlab::SetLogSeverity(mlab::VERBOSE);
-  mlab::Initialize("mbm_client", MBM_VERSION);
   gflags::SetVersionString(MBM_VERSION);
 
   if (FLAGS_sweep) {
