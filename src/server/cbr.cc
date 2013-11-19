@@ -97,7 +97,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   memset(chunk_buffer, 'x', bytes_per_chunk);
 
   // set the send buffer low
-  test_socket->SetSendBufferSize(bytes_per_chunk * 10);
+  //test_socket->SetSendBufferSize(bytes_per_chunk * 10);
 
   // show the send buffer
   std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
