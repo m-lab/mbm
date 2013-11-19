@@ -51,6 +51,7 @@ const bool socket_type_validator =
     gflags::RegisterFlagValidator(&FLAGS_socket_type, &ValidateSocketType);
 
 Result Run(SocketType socket_type, int rate) {
+  std::cout.setf(std::ios_base::fixed);
   std::cout << "Running MBM test over "
             << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " at "
             << rate << " kbps\n";

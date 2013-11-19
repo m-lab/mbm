@@ -35,6 +35,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     web100::CreateConnection(test_socket);
 #endif
 
+  std::cout.setf(std::ios_base::fixed);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
   int tcp_mss = TCP_MSS;
