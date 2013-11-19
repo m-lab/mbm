@@ -28,21 +28,10 @@ if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86")
 	add_definitions(-DARCH_X86)
 endif()
 
-if(DEFINED USE_WEB100 AND USE_WEB100)
-	add_definitions(-DUSE_WEB100)
-	set(MBM_WEB100_INCLUDE_DIRS ${WEB100_INCLUDE_DIRS})
-	set(MBM_WEB100_LIBRARIES ${WEB100_LIBRARIES})
-else()
-	set(MBM_WEB100_INCLUDE_DIRS "")
-	set(MBM_WEB100_LIBRARIES "")
-endif()
-
 include_directories(
 	${PROJECT_ROOT_DIR}/src
 	${MLAB_LIBRARIES_ROOT}/include
-	${GTEST_ROOT}/include
-	${MBM_WEB100_INCLUDE_DIRS})
-
+	${GTEST_ROOT}/include)
 file(GLOB_RECURSE SRC_FILES *.cc)
 
 # Build the libraries

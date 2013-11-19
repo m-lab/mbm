@@ -16,12 +16,12 @@
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
 #include "common/time.h"
-#ifdef USE_WEB100
-#include "common/web100.h"
-#endif
 #include "gflags/gflags.h"
 #include "mlab/socket.h"
 #include "mlab/accepted_socket.h"
+#ifdef USE_WEB100
+#include "server/web100.h"
+#endif
 
 DECLARE_bool(verbose);
 

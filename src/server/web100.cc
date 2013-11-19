@@ -1,6 +1,6 @@
 #ifdef USE_WEB100
 
-#include "common/web100.h"
+#include "server/web100.h"
 
 #include <assert.h>
 #include <errno.h>

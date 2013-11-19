@@ -14,15 +14,15 @@ extern "C" {
 
 #include "common/config.h"
 #include "common/constants.h"
-#ifdef USE_WEB100
-#include "common/web100.h"
-#endif  // USE_WEB100
 #include "common/scoped_ptr.h"
 #include "gflags/gflags.h"
 #include "mlab/accepted_socket.h"
 #include "mlab/mlab.h"
 #include "mlab/listen_socket.h"
 #include "server/cbr.h"
+#ifdef USE_WEB100
+#include "server/web100.h"
+#endif  // USE_WEB100
 
 // TODO: configuration
 #define BASE_PORT 12345
