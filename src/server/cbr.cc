@@ -169,7 +169,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double send_rate = (bytes_sent * 8) / delta_time_sec;
   double rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
   std::cout << "send rate: " << send_rate << " b/sec ("
-            << rate_delta_percent << "%% of target)\n";
+            << rate_delta_percent << "% of target)\n";
 
   uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;

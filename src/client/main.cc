@@ -143,7 +143,7 @@ Result Run(SocketType socket_type, int rate) {
   double receive_rate = (bytes_received * 8) / delta_time_sec;
   double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
   std::cout << "receive rate: " << receive_rate << " b/sec ("
-            << rate_delta_percent << "%% of target)\n";
+            << rate_delta_percent << "% of target)\n";
 
   Result result;
   mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);
