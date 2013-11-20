@@ -36,6 +36,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 #endif
 
   std::cout.setf(std::ios_base::fixed);
+  std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
   int tcp_mss = TCP_MSS;
@@ -164,7 +165,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   std::cout << "\nbytes sent: " << bytes_sent << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
-  std::cout << "send rate: " << (bytes_sent*8) / delta_time_sec << " b/sec\n";
+
+  double send_rate = (bytes_sent * 8) / delta_time_sec;
+  double rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
+  std::cout << "send rate: " << send_rate << " b/sec ("
+            << rate_delta_percent << "%% of target)\n";
 
   uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;
