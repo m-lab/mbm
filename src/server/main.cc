@@ -40,6 +40,8 @@ bool ValidatePort(const char* flagname, int32_t value) {
 }
 }  // namespace
 
+DEFINE_validator(port, ValidatePort);
+
 namespace mbm {
 bool used_port[NUM_PORTS];
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;

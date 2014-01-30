@@ -8,7 +8,7 @@ class AcceptedSocket;
 }
 
 namespace mbm {
-struct Config;
+class Config;
 
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
