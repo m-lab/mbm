@@ -4,8 +4,8 @@
 namespace mbm {
 
 class Model {
-	public:
-		Model(const Config&);
+  public:
+    Model(const Config&);
 };
 
 } // namespace mbm
