@@ -16,9 +16,12 @@ Config::Config()
       loss_threshold(0.0) {
 }
 
-Config::Config(SocketType socket_type, uint32_t cbr_kb_s, double loss_threshold)
+Config::Config(SocketType socket_type, uint32_t cbr_kb_s, uint32_t rtt_ms, 
+               uint32_t mss_bytes, double loss_threshold)
     : socket_type(socket_type),
       cbr_kb_s(cbr_kb_s),
+      rtt_ms(rtt_ms),
+      mss_bytes(mss_bytes),
       loss_threshold(loss_threshold) {
 }
 
