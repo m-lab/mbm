@@ -23,6 +23,10 @@ DEFINE_bool(sweep, false, "Perform a sweep in UDP to find the best rate for a "
 DEFINE_int32(rate, 600, "The rate to test. Ignored if --sweep is set.");
 DEFINE_string(socket_type, "tcp", "The transport protocol to use. Ignored if "
                                   "--sweep is set.");
+// TODO(Henry): find reasonable defaults of mss and rtt
+DEFINE_int32(mss, 1000, "The target maximum segment size in bytes");
+DEFINE_int32(rtt, 1000, "The target round trip time in miliseconds");
+
 DEFINE_int32(minrate, 400, "The minimum rate to test when --sweep is active.");
 DEFINE_int32(maxrate, 1200, "The maximum rate to test when --sweep is active.");
 DEFINE_int32(ratestep, 100, "The step to take between rates when --sweep is "
@@ -50,7 +54,7 @@ const bool port_validator =
 const bool socket_type_validator =
     gflags::RegisterFlagValidator(&FLAGS_socket_type, &ValidateSocketType);
 
-Result Run(SocketType socket_type, int rate) {
+Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running MBM test over "
@@ -62,7 +66,7 @@ Result Run(SocketType socket_type, int rate) {
       mlab::ClientSocket::CreateOrDie(server, FLAGS_port));
 
   std::cout << "Sending config\n";
-  const Config config(socket_type, rate, 0.0);
+  const Config config(socket_type, rate, rtt, mss, 0.0);
   ctrl_socket->SendOrDie(mlab::Packet(config));
 
   std::cout << "Getting port\n";
@@ -168,7 +172,7 @@ int main(int argc, char* argv[]) {
     // Do UDP sweep and then TCP test.
     int rate = FLAGS_minrate;
     for (; rate <= FLAGS_maxrate; rate += FLAGS_ratestep) {
-      mbm::Result result = mbm::Run(SOCKETTYPE_UDP, rate);
+      mbm::Result result = mbm::Run(SOCKETTYPE_UDP, rate, FLAGS_rtt, FLAGS_mss);
       if (result == mbm::RESULT_FAIL) {
         if (rate == FLAGS_minrate) {
           std::cerr << "Minimum rate " << FLAGS_minrate << " kbps is too "
@@ -186,14 +190,14 @@ int main(int argc, char* argv[]) {
       std::cerr << "Maxmimum rate " << FLAGS_maxrate << " kbps is too low\n";
       return 1;
     }
-    mbm::Run(SOCKETTYPE_TCP, rate - FLAGS_ratestep);
+    mbm::Run(SOCKETTYPE_TCP, rate - FLAGS_ratestep, FLAGS_rtt, FLAGS_mss);
   } else {
     // Single run at a given rate.
     SocketType mbm_socket_type = SOCKETTYPE_TCP;
     if (FLAGS_socket_type == "udp")
       mbm_socket_type = SOCKETTYPE_UDP;
 
-    mbm::Run(mbm_socket_type, FLAGS_rate);
+    mbm::Run(mbm_socket_type, FLAGS_rate, FLAGS_rtt, FLAGS_mss);
   }
 
   return 0;

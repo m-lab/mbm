@@ -13,6 +13,8 @@ const std::string delimiter = ":";
 Config::Config()
     : socket_type(static_cast<SocketType>(-1)),
       cbr_kb_s(0),
+      rtt_ms(0),
+      mss_bytes(0),
       loss_threshold(0.0) {
 }
 
