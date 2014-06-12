@@ -9,11 +9,13 @@ namespace mbm {
 
 class TrafficGenerator {  
   public:
-    TrafficGenerator(mlab::AcceptedSocket *test_socket, uint32_t bytes_per_chunk);
+    TrafficGenerator(const mlab::AcceptedSocket *test_socket, uint32_t bytes_per_chunk);
     uint32_t send(int num_chunks);
+    uint32_t packets_sent();
+    uint32_t total_bytes_sent();
 
   private:
-    mlab::AcceptedSocket *test_socket_;
+    const mlab::AcceptedSocket *test_socket_;
     uint32_t bytes_per_chunk;
     uint32_t total_bytes_sent_;
     uint32_t packets_sent_;

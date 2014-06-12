@@ -11,7 +11,8 @@
 
 namespace mbm {
 
-TrafficGenerator::TrafficGenerator(mlab::AcceptedSocket *test_socket, uint32_t bytes_per_chunk)
+TrafficGenerator::TrafficGenerator(const mlab::AcceptedSocket *test_socket,
+                                   uint32_t bytes_per_chunk)
     : test_socket_(test_socket),
       bytes_per_chunk(bytes_per_chunk),
       total_bytes_sent_(0),
@@ -40,6 +41,14 @@ uint32_t TrafficGenerator::send(int num_chunks){
   total_bytes_sent_ += bytes_sent;
   
   return bytes_sent;
+}
+
+uint32_t TrafficGenerator::packets_sent(){
+  return packets_sent_;
+}
+
+uint32_t TrafficGenerator::total_bytes_sent(){
+  return total_bytes_sent_;
 }
 
 } // namespace mbm
