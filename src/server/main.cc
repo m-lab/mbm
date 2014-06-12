@@ -48,29 +48,53 @@ pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct ServerConfig {
   // Takes ownership of the control socket.
-  ServerConfig(uint16_t port, const Config& config,
-               const mlab::AcceptedSocket* ctrl_socket)
-      : port(port), config(config), ctrl_socket(ctrl_socket) {}
+  ServerConfig( const mlab::AcceptedSocket* ctrl_socket)
+      : ctrl_socket(ctrl_socket) {}
   ~ServerConfig() {
     delete ctrl_socket;
   }
 
-  uint16_t port;
-  Config config;
   const mlab::AcceptedSocket* ctrl_socket;
 };
+
+uint16_t GetAvailablePort() {
+  // TODO: This could be smarter - maintain a set of unused ports, eg., and
+  // pick the first.
+  uint16_t mbm_port = 0;
+  for (; mbm_port < NUM_PORTS; ++mbm_port) {
+    if (!used_port[mbm_port])
+      break;
+  }
+  assert(mbm_port != NUM_PORTS);
+  return mbm_port;
+}
+
 
 void* ServerThread(void* server_config_data) {
   scoped_ptr<ServerConfig> server_config(
       reinterpret_cast<ServerConfig*>(server_config_data));
 
+  // Pick a port.
+  pthread_mutex_lock(&used_port_mutex);
+  const uint16_t port = GetAvailablePort() + BASE_PORT;
+  used_port[port] = true;
+  pthread_mutex_unlock(&used_port_mutex);
+
   {
     const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
-    const uint16_t port = server_config->port + BASE_PORT;
+
+    std::cout << "Getting config\n";
+    const Config config =
+        ctrl_socket->ReceiveOrDie(sizeof(Config)).as<Config>();
+
+    std::cout << "Setting config [" << config.socket_type << " | "
+              << config.cbr_kb_s << " kb/s | " << config.loss_threshold
+              << " %]\n";
+
 
     // TODO: Consider not dying but picking a different port.
     scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
-        port, server_config->config.socket_type));
+        port, config.socket_type));
 
     std::cout << "Listening on " << port << "\n";
 
@@ -90,7 +114,7 @@ void* ServerThread(void* server_config_data) {
     // TODO(dominic): Consider passing the ServerConfig entirely
     Result result = RunCBR(test_socket.get(),
                            ctrl_socket,
-                           server_config->config);
+                           config);
     if (result == RESULT_ERROR)
       std::cerr << kResultStr[result] << "\n";
     else
@@ -99,22 +123,10 @@ void* ServerThread(void* server_config_data) {
   }
 
   pthread_mutex_lock(&used_port_mutex);
-  used_port[server_config->port] = false;
+  used_port[port] = false;
   pthread_mutex_unlock(&used_port_mutex);
 
   pthread_exit(NULL);
-}
-
-uint16_t GetAvailablePort() {
-  // TODO: This could be smarter - maintain a set of unused ports, eg., and
-  // pick the first.
-  uint16_t mbm_port = 0;
-  for (; mbm_port < NUM_PORTS; ++mbm_port) {
-    if (!used_port[mbm_port])
-      break;
-  }
-  assert(mbm_port != NUM_PORTS);
-  return mbm_port;
 }
 
 }  // namespace mbm
@@ -145,30 +157,11 @@ int main(int argc, char* argv[]) {
     std::cout << "New connection\n";
     const mlab::AcceptedSocket* ctrl_socket(socket->Accept());
 
-    std::cout << "Getting config\n";
-    const Config config =
-        ctrl_socket->ReceiveOrDie(sizeof(Config)).as<Config>();
-
-    std::cout << "Setting config [" << config.socket_type << " | "
-              << config.cbr_kb_s << " kb/s | " << config.loss_threshold
-              << " %]\n";
-
-    // Pick a port.
-    uint16_t mbm_port = mbm::GetAvailablePort();
-    pthread_mutex_lock(&used_port_mutex);
-    used_port[mbm_port] = true;
-    pthread_mutex_unlock(&used_port_mutex);
-
-    // Note, the server thread will delete this.
-    // TODO(dominic): This should pass the client address through to restrict
-    // connections.
     ServerConfig* server_config =
-        new ServerConfig(mbm_port, config, ctrl_socket);
+        new ServerConfig(ctrl_socket);
 
     // Each server socket runs on a different thread.
     pthread_t thread;
-    std::cout << "Starting server thread for port " << (mbm_port + BASE_PORT)
-              << "\n";
     int rc = pthread_create(&thread, NULL, mbm::ServerThread,
                             (void*)server_config);
     if (rc != 0) {
