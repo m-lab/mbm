@@ -26,13 +26,13 @@ uint32_t TrafficGenerator::send(int num_chunks){
   for(int i=0; i<num_chunks; ++i){
     uint32_t seq_no = htonl(packets_sent_);
     memcpy(&buffer_[0], &seq_no, sizeof(packets_sent_));
-    uint32_t nonce = rand();
+    uint32_t nonce = htonl(rand());
     memcpy(&buffer_[0]+sizeof(packets_sent_), &nonce, sizeof(nonce));
 
     mlab::Packet chunk_packet(&buffer_[0], bytes_per_chunk);
     test_socket_->SendOrDie(chunk_packet);
 
-    nonce_.push_back(nonce);
+    nonce_.push_back(ntohl(nonce));
     timestamps_.push_back(GetTimeNS());
 
     bytes_sent += chunk_packet.length();
