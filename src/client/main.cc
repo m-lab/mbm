@@ -101,18 +101,15 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   std::vector<uint32_t> seq_nos;
   uint32_t bytes_received = 0;
   uint32_t last_percent = 0;
-  mlab::Packet recv = mbm_socket->ReceiveOrDie(chunk_len);
-  if (recv.length() == 0) {
-    std::cerr << "Something went wrong. The server might have died: "
-              << strerror(errno) << "\n";
-    return RESULT_ERROR;
-  }
-  bytes_received += recv.length();
-  seq_nos.push_back(ntohl(recv.as<uint32_t>()));
+
+  mlab::Packet recv("");
+
   while (bytes_received < bytes_total) {
     size_t remain = bytes_total - bytes_received;
     size_t read_len = remain < chunk_len ? remain : chunk_len;
-    recv = mbm_socket->ReceiveX(read_len, &bytes_read);
+    recv = bytes_received == 0 ? mbm_socket->ReceiveX(read_len, &bytes_read)
+                               : recv = mbm_socket->ReceiveOrDie(chunk_len);
+
     if (recv.length() == 0) {
       std::cerr << "Something went wrong. The server might have died: "
                 << strerror(errno) << "\n";
