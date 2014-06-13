@@ -99,6 +99,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   uint64_t start_time = GetTimeNS();
   std::vector<uint32_t> seq_nos;
+  std::vector<uint32_t> nonce;
+  std::vector<uint64_t> timestamps;
   uint32_t bytes_received = 0;
   uint32_t last_percent = 0;
 
@@ -109,7 +111,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     size_t read_len = remain < chunk_len ? remain : chunk_len;
     recv = bytes_received == 0 ? mbm_socket->ReceiveX(read_len, &bytes_read)
                                : recv = mbm_socket->ReceiveOrDie(chunk_len);
-
+    timestamps.push_back(GetTimeNS());
     if (recv.length() == 0) {
       std::cerr << "Something went wrong. The server might have died: "
                 << strerror(errno) << "\n";
@@ -117,6 +119,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     }
     bytes_received += recv.length();
     seq_nos.push_back(ntohl(recv.as<uint32_t>()));
+    nonce.push_back(ntohl(reinterpret_cast<uint32_t>(&recv.buffer()[4])));
     if (FLAGS_verbose) {
       uint32_t percent = static_cast<uint32_t>(
           static_cast<double>(100 * bytes_received) / bytes_total);
