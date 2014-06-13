@@ -76,9 +76,11 @@ void* ServerThread(void* server_config_data) {
 
   // Pick a port.
   pthread_mutex_lock(&used_port_mutex);
-  const uint16_t port = GetAvailablePort() + BASE_PORT;
-  used_port[port] = true;
+  uint16_t available_port = GetAvailablePort();
+  used_port[available_port] = true;
   pthread_mutex_unlock(&used_port_mutex);
+
+  const uint16_t port = available_port + BASE_PORT;
 
   {
     const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
