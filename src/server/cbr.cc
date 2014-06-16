@@ -106,22 +106,29 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
             << std::flush;
 
-
 #ifdef USE_WEB100
+  double p0 = 0.0;
+  double p1 = 0.0;
+  double k = 0.0;
+  double s = 0.0;
+  double alpha = 0.0;
+  double beta = 0.0;
+  double h1 = 0.0;
+  double h2 = 0.0;
   if (test_socket->type() == SOCKETTYPE_TCP) {
     web100::Start();
     // calculate the parameters used in the statistical test
     int target_run_length = model::target_run_length(config.cbr_kb_s,
                                                      config.rtt_ms,
                                                      config.mss_bytes);
-    double p0 = 1.0 / target_run_length;
-    double p1 = 1 / (target_run_length / 4.0);
-    double k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
-    double s = log((1-p0) / (1-p1)) / k;
-    double alpha = 0.05; // type I error
-    double beta = 0.05; // type II error
-    double h1 = log((1-alpha) / beta) / k;
-    double h2 = log((1-beta) / alpha) / k;
+    p0 = 1.0 / target_run_length;
+    p1 = 1 / (target_run_length / 4.0);
+    k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
+    s = log((1-p0) / (1-p1)) / k;
+    alpha = 0.05; // type I error
+    beta = 0.05; // type II error
+    h1 = log((1-alpha) / beta) / k;
+    h2 = log((1-beta) / alpha) / k;
   }
 #endif
   uint32_t packets_sent = 0;
@@ -158,7 +165,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         // the statistical test
         double xa = -h1 + s * packets_sent;
         double xb = h2 + s * packets_sent;
-        uint32_t packet_loss = web100::PacketRetransCount()
+        uint32_t packet_loss = web100::PacketRetransCount();
         if(packet_loss <= xa) {
           // PASS
         } else if(packet_loss >= xb) {
