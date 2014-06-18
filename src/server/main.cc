@@ -125,7 +125,7 @@ void* ServerThread(void* server_config_data) {
   }
 
   pthread_mutex_lock(&used_port_mutex);
-  used_port[port] = false;
+  used_port[available_port] = false;
   pthread_mutex_unlock(&used_port_mutex);
 
   pthread_exit(NULL);
