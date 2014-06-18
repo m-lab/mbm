@@ -17,6 +17,7 @@
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
 #include "common/time.h"
+#include "common/traffic_data.h"
 #include "server/traffic_generator.h"
 #include "gflags/gflags.h"
 #include "mlab/socket.h"
@@ -210,6 +211,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
   // back over control channel to see which were lost/retransmitted.
+  uint32_t data_size_obj =
+    ntohl(ctrl_socket->ReceiveOrDie(sizeof(data_size_obj)).as<uint32_t>());
+  std::cout << " size of collected data: " << data_size_obj << std::endl;
+  std::vector<TrafficData> client_data;
+  
 
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  write queue: " << application_write_queue << "\n";

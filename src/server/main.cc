@@ -147,6 +147,7 @@ int main(int argc, char* argv[]) {
   if (FLAGS_verbose)
     mlab::SetLogSeverity(mlab::VERBOSE);
   gflags::SetVersionString(MBM_VERSION);
+  srand(SEED);
 
 #ifdef USE_WEB100
   web100::Initialize();

@@ -12,6 +12,7 @@
 #include "common/result.h"
 #include "common/scoped_ptr.h"
 #include "common/time.h"
+#include "common/traffic_data.h"
 #include "gflags/gflags.h"
 #include "mlab/client_socket.h"
 #include "mlab/mlab.h"
@@ -101,9 +102,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   }
 
   uint64_t start_time = GetTimeNS();
-  std::vector<uint32_t> seq_nos;
-  std::vector<uint32_t> nonce;
-  std::vector<uint64_t> timestamps;
+  std::vector<TrafficData> data_collected;
   uint32_t bytes_received = 0;
   uint32_t last_percent = 0;
 
@@ -114,15 +113,17 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     size_t read_len = remain < chunk_len ? remain : chunk_len;
     recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
                                : mbm_socket->ReceiveX(read_len, &bytes_read);
-    timestamps.push_back(GetTimeNS());
+    double timestamp = GetTimeNS();
+    uint32_t seq_no = ntohl(recv.as<uint32_t>());
+    uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
+    data_collected.push_back(TrafficData(seq_no, nonce, timestamp));
+
     if (recv.length() == 0) {
       std::cerr << "Something went wrong. The server might have died: "
                 << strerror(errno) << "\n";
       return RESULT_ERROR;
     }
     bytes_received += recv.length();
-    seq_nos.push_back(ntohl(recv.as<uint32_t>()));
-    nonce.push_back(ntohl(reinterpret_cast<uint32_t>(&recv.buffer()[4])));
     if (FLAGS_verbose) {
       uint32_t percent = static_cast<uint32_t>(
           static_cast<double>(100 * bytes_received) / bytes_total);
@@ -134,12 +135,16 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   }
   uint64_t end_time = GetTimeNS();
 
-  // TODO(Henry): send the collected data back to the server
 
   if (FLAGS_verbose) {
-    for (std::vector<uint32_t>::const_iterator it = seq_nos.begin();
-         it != seq_nos.end(); ++it) {
-      std::cout << "  s: " << std::hex << *it << " " << std::dec << *it << "\n";
+    for (std::vector<TrafficData>::const_iterator it = data_collected.begin();
+         it != data_collected.end(); ++it) {
+      std::cout << "  seq_no: " << std::hex << it->seq_no() << " "
+                << std::dec << it->seq_no() << "\n";
+      std::cout << "  nonce: " << std::hex << it->nonce() << " "
+                << std::dec << it->nonce() << "\n";
+      std::cout << "  timestamp: " << std::hex << it->timestamp() << " "
+                << std::dec << it->timestamp() << "\n";
     }
   }
 
@@ -155,6 +160,13 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
   std::cout << "receive rate: " << receive_rate << " b/sec ("
             << rate_delta_percent << "% of target)\n";
+
+
+  // TODO(Henry): send the collected data back to the server
+  uint32_t data_size_obj = data_collected.size();
+  ctrl_socket->SendOrDie(mlab::Packet(htonl(data_size_obj)));
+  std::cout << "sending collected data..." << std::endl;
+
 
   Result result;
   mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);

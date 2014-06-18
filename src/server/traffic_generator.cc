@@ -47,6 +47,8 @@ uint32_t TrafficGenerator::send(int num_chunks){
     if (FLAGS_verbose) {
       std::cout << "  s: " << std::hex << ntohl(seq_no) << " " << std::dec
                 << ntohl(seq_no) << "\n";
+      std::cout << "  nonce: " << std::hex << ntohl(nonce) << " " << std::dec
+                << ntohl(nonce) << "\n";
       uint32_t percent = static_cast<uint32_t>(
           static_cast<float>(100 * packets_sent_) / TOTAL_PACKETS_TO_SEND);
       if (percent > last_percent_) {
