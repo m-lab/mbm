@@ -17,6 +17,7 @@
 #include "common/constants.h"
 #include "common/scoped_ptr.h"
 #include "common/time.h"
+#include "server/traffic_generator.h"
 #include "gflags/gflags.h"
 #include "mlab/socket.h"
 #include "mlab/accepted_socket.h"
@@ -96,12 +97,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  should take " << (1.0 * wire_bytes_total / bytes_per_sec)
             << " seconds\n";
 
-  char* chunk_buffer = new char[bytes_per_chunk];
-  memset(chunk_buffer, 'x', bytes_per_chunk);
-
-  // set the send buffer low
-  //test_socket->SetSendBufferSize(bytes_per_chunk * 10);
-
   // show the send buffer
   std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
             << std::flush;
@@ -131,21 +126,19 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     h2 = log((1-beta) / alpha) / k;
   }
 #endif
-  uint32_t packets_sent = 0;
-  uint32_t bytes_sent = 0;
   uint32_t sleep_count = 0;
   uint64_t outer_start_time = GetTimeNS();
-  uint32_t last_percent = 0;
-  while (packets_sent < TOTAL_PACKETS_TO_SEND) {
-    // Set the first 32-bits to the sequence number.
-    uint32_t seq_no = htonl(packets_sent);
-    memcpy(chunk_buffer, &seq_no, sizeof(packets_sent));
-    mlab::Packet chunk_packet(chunk_buffer, bytes_per_chunk);
 
-    test_socket->SendOrDie(chunk_packet);
-    bytes_sent += chunk_packet.length();
-    ++packets_sent;
+  // this is related to the verbose block in line 116
+  // uint32_t last_percent = 0;
 
+  TrafficGenerator generator(test_socket, bytes_per_chunk);
+
+  while (generator.packets_sent() < TOTAL_PACKETS_TO_SEND) {
+    generator.send(1);
+
+// TODO(Henry): migrate these to the generator class
+/*
     if (FLAGS_verbose) {
       std::cout << "  s: " << std::hex << ntohl(seq_no) << " " << std::dec
                 << ntohl(seq_no) << "\n";
@@ -156,7 +149,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         std::cout << "\r" << percent << "%" << std::flush;
       }
     }
-
+*/
 
     // TODO(Henry): 
     #ifdef USE_WEB100
@@ -176,11 +169,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       }
     #endif
     
-
-
     // figure out the start time for the next chunk
     uint64_t curr_time = GetTimeNS();
-    uint64_t next_start = outer_start_time + (packets_sent * time_per_chunk_ns);
+    uint64_t next_start = outer_start_time + (generator.packets_sent() * time_per_chunk_ns);
 
     // If we have time left over, sleep the remainder.
     int32_t left_over_ns = next_start - curr_time;
@@ -207,10 +198,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
 
-  std::cout << "\nbytes sent: " << bytes_sent << "\n";
+  std::cout << "\nbytes sent: " << generator.total_bytes_sent() << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
 
-  double send_rate = (bytes_sent * 8) / delta_time_sec;
+  double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
   double rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
   std::cout << "send rate: " << send_rate << " b/sec ("
             << rate_delta_percent << "% of target)\n";
@@ -239,7 +230,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  write queue: " << application_write_queue << "\n";
   std::cout << "  retransmit queue: " << retransmit_queue << "\n";
   std::cout << "  rtt: " << rtt_sec << "\n";
-  std::cout << "  sent: " << packets_sent << "\n";
+  std::cout << "  sent: " << generator.packets_sent() << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
 
   if (rtt_sec > 0.0) {
@@ -251,7 +242,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   }
 
-  double loss_ratio = static_cast<double>(lost_packets) / packets_sent;
+  double loss_ratio = static_cast<double>(lost_packets) / generator.packets_sent();
   if (loss_ratio > 1.0)
     return RESULT_INCONCLUSIVE;
 
