@@ -140,8 +140,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       if (test_socket->type() == SOCKETTYPE_TCP) {
         web100::Stop();
         // the statistical test
-        double xa = -h1 + s * packets_sent;
-        double xb = h2 + s * packets_sent;
+        double xa = -h1 + s * generator.packets_sent();
+        double xb = h2 + s * generator.packets_sent();
         uint32_t packet_loss = web100::PacketRetransCount();
         if(packet_loss <= xa) {
           // PASS
