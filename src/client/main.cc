@@ -58,8 +58,11 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running MBM test over "
-            << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " at "
-            << rate << " kbps\n";
+            << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp")
+            << " with target parameters:" << std::endl
+            << "rate: " << rate << " kbps" << std::endl
+            << "rtt: " << rtt << " ms" << std::endl
+            << "mss: " << mss << " bytes" << std::endl;
 
   const mlab::Host server(FLAGS_server);
   scoped_ptr<mlab::ClientSocket> ctrl_socket(
@@ -109,8 +112,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   while (bytes_received < bytes_total) {
     size_t remain = bytes_total - bytes_received;
     size_t read_len = remain < chunk_len ? remain : chunk_len;
-    recv = bytes_received == 0 ? mbm_socket->ReceiveX(read_len, &bytes_read)
-                               : recv = mbm_socket->ReceiveOrDie(chunk_len);
+    recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
+                               : mbm_socket->ReceiveX(read_len, &bytes_read);
     timestamps.push_back(GetTimeNS());
     if (recv.length() == 0) {
       std::cerr << "Something went wrong. The server might have died: "
@@ -131,6 +134,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   }
   uint64_t end_time = GetTimeNS();
 
+  // TODO(Henry): send the collected data back to the server
+
   if (FLAGS_verbose) {
     for (std::vector<uint32_t>::const_iterator it = seq_nos.begin();
          it != seq_nos.end(); ++it) {
@@ -145,6 +150,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   std::cout << "time: " << delta_time_sec << "\n";
 
   double receive_rate = (bytes_received * 8) / delta_time_sec;
+  ctrl_socket->SendOrDie(mlab::Packet(receive_rate));
+  
   double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
   std::cout << "receive rate: " << receive_rate << " b/sec ("
             << rate_delta_percent << "% of target)\n";

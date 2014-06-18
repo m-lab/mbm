@@ -2,12 +2,17 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+#include <iostream>
 #include <vector>
 
 #include "mlab/accepted_socket.h"
 #include "mlab/packet.h"
+#include "common/constants.h"
 #include "common/time.h"
+#include "gflags/gflags.h"
 #include "server/traffic_generator.h"
+
+DECLARE_bool(verbose);
 
 namespace mbm {
 
@@ -17,6 +22,7 @@ TrafficGenerator::TrafficGenerator(const mlab::AcceptedSocket *test_socket,
       bytes_per_chunk(bytes_per_chunk),
       total_bytes_sent_(0),
       packets_sent_(0),
+      last_percent_(0),
       buffer_(std::vector<char>(bytes_per_chunk,'x')) {
 }
                  
@@ -37,7 +43,18 @@ uint32_t TrafficGenerator::send(int num_chunks){
 
     bytes_sent += chunk_packet.length();
     ++packets_sent_;
-  }
+
+    if (FLAGS_verbose) {
+      std::cout << "  s: " << std::hex << ntohl(seq_no) << " " << std::dec
+                << ntohl(seq_no) << "\n";
+      uint32_t percent = static_cast<uint32_t>(
+          static_cast<float>(100 * packets_sent_) / TOTAL_PACKETS_TO_SEND);
+      if (percent > last_percent_) {
+        last_percent_ = percent;
+        std::cout << "\r" << percent << "%" << std::flush;
+      }
+    }
+  } // for loop
   total_bytes_sent_ += bytes_sent;
   
   return bytes_sent;

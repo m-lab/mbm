@@ -90,7 +90,8 @@ void* ServerThread(void* server_config_data) {
         ctrl_socket->ReceiveOrDie(sizeof(Config)).as<Config>();
 
     std::cout << "Setting config [" << config.socket_type << " | "
-              << config.cbr_kb_s << " kb/s | " << config.loss_threshold
+              << config.cbr_kb_s << " kb/s | " << config.rtt_ms << " ms | "
+              << config.mss_bytes << " bytes | " << config.loss_threshold
               << " %]\n";
 
 
@@ -108,10 +109,12 @@ void* ServerThread(void* server_config_data) {
     scoped_ptr<mlab::AcceptedSocket> test_socket(mbm_socket->Accept());
 
     std::cout << "Waiting for READY\n";
-    assert(ctrl_socket->ReceiveOrDie(strlen(READY)).str() == READY);
     // TODO(dominic): This may need to become a while loop if test_socket is UDP
     // and loss is high.
-    assert(test_socket->ReceiveOrDie(strlen(READY)).str() == READY);
+    std::string ctrl_ready = ctrl_socket->ReceiveOrDie(strlen(READY)).str();
+    std::string test_ready = test_socket->ReceiveOrDie(strlen(READY)).str();
+    assert(ctrl_ready == READY);
+    assert(test == READY);
 
     // TODO(dominic): Consider passing the ServerConfig entirely
     Result result = RunCBR(test_socket.get(),
@@ -121,6 +124,7 @@ void* ServerThread(void* server_config_data) {
       std::cerr << kResultStr[result] << "\n";
     else
       std::cout << kResultStr[result] << "\n";
+
     ctrl_socket->SendOrDie(mlab::Packet(htonl(result)));
   }
 

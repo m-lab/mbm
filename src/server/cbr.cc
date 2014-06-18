@@ -129,29 +129,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t sleep_count = 0;
   uint64_t outer_start_time = GetTimeNS();
 
-  // this is related to the verbose block in line 116
-  // uint32_t last_percent = 0;
 
   TrafficGenerator generator(test_socket, bytes_per_chunk);
 
   while (generator.packets_sent() < TOTAL_PACKETS_TO_SEND) {
     generator.send(1);
 
-// TODO(Henry): migrate these to the generator class
-/*
-    if (FLAGS_verbose) {
-      std::cout << "  s: " << std::hex << ntohl(seq_no) << " " << std::dec
-                << ntohl(seq_no) << "\n";
-      uint32_t percent = static_cast<uint32_t>(
-          static_cast<float>(100 * packets_sent) / TOTAL_PACKETS_TO_SEND);
-      if (percent > last_percent) {
-        last_percent = percent;
-        std::cout << "\r" << percent << "%" << std::flush;
-      }
-    }
-*/
-
-    // TODO(Henry): 
+    // TODO(Henry): determine whether to terminate traffic when result is known
     #ifdef USE_WEB100
       if (test_socket->type() == SOCKETTYPE_TCP) {
         web100::Stop();
@@ -189,8 +173,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       }
     } else {
       // Warning: start time of next chunk has already passed, no sleep
-      // TODO(dominic): Should this be an error or inconclusive return state?
-      // std::cout << "o" << std::flush;
+      // INCONCLUSIVE
     }
   }
   uint64_t outer_end_time = GetTimeNS();
@@ -205,6 +188,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
   std::cout << "send rate: " << send_rate << " b/sec ("
             << rate_delta_percent << "% of target)\n";
+
+  double receive_rate =
+    ctrl_socket->ReceiveOrDie(sizeof(receive_rate)).as<double>();
+  std::cout << "receive rate: " << receive_rate << " b/sec\n";
 
   uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;
@@ -223,8 +210,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
   // back over control channel to see which were lost/retransmitted.
-  // TODO(dominic): Issue #9: get the receive rate back over control channel to
-  // see what rate was actually achieved over the wire.
 
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  write queue: " << application_write_queue << "\n";
@@ -232,6 +217,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  rtt: " << rtt_sec << "\n";
   std::cout << "  sent: " << generator.packets_sent() << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
+
 
   if (rtt_sec > 0.0) {
     if ((application_write_queue + retransmit_queue) / rtt_sec <

@@ -19,6 +19,7 @@ class TrafficGenerator {
     uint32_t bytes_per_chunk;
     uint32_t total_bytes_sent_;
     uint32_t packets_sent_;
+    uint32_t last_percent_;
     std::vector<char> buffer_;
     std::vector<uint32_t> nonce_;
     std::vector<uint64_t> timestamps_;
