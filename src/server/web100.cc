@@ -61,7 +61,8 @@ class Var {
   }
 
   void stop() {
-    assert(!stopped);
+    // allow multiple snapshots for after_ in the course of testing
+    // assert(!stopped);
     if (web100_snap(after_) != WEB100_ERR_SUCCESS) {
       web100_perror("web100");
       perror("sys");
