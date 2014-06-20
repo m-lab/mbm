@@ -162,10 +162,22 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
             << rate_delta_percent << "% of target)\n";
 
 
-  // TODO(Henry): send the collected data back to the server
+  // Send the collected data back to the server
   uint32_t data_size_obj = data_collected.size();
   ctrl_socket->SendOrDie(mlab::Packet(htonl(data_size_obj)));
+  uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
+
   std::cout << "sending collected data..." << std::endl;
+
+
+  std::vector<TrafficData> send_buffer(data_size_obj);
+  for (uint32_t i=0; i<data_size_obj; ++i) {
+    send_buffer[i] = TrafficData::hton(data_collected[i]);
+  }
+
+  ctrl_socket->SendOrDie(
+    mlab::Packet(
+      reinterpret_cast<const char*>(&send_buffer[0]), data_size_bytes));
 
 
   Result result;

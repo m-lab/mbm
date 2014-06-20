@@ -209,13 +209,19 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
 #endif
 
-  // TODO(dominic): Issue #7: if we're running UDP, get the sequence numbers
-  // back over control channel to see which were lost/retransmitted.
-  uint32_t data_size_obj =
+  // Receive the data collected by the client
+  uint32_t data_size_obj = 
     ntohl(ctrl_socket->ReceiveOrDie(sizeof(data_size_obj)).as<uint32_t>());
-  std::cout << " size of collected data: " << data_size_obj << std::endl;
-  std::vector<TrafficData> client_data;
-  
+  uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
+
+  mlab::Packet recv_pkt = ctrl_socket->ReceiveOrDie(data_size_bytes);
+  const TrafficData* recv_buffer =
+    reinterpret_cast<const TrafficData*>(recv_pkt.buffer());
+
+  std::vector<TrafficData> client_data(data_size_obj);
+  for(uint32_t i=0; i<data_size_obj; ++i){
+    client_data[i] = (TrafficData::ntoh(recv_buffer[i]));
+  }
 
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  write queue: " << application_write_queue << "\n";
