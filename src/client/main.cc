@@ -108,28 +108,44 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   mlab::Packet recv("");
 
-  while (bytes_received < bytes_total) {
-    size_t remain = bytes_total - bytes_received;
-    size_t read_len = remain < chunk_len ? remain : chunk_len;
-    recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
-                               : mbm_socket->ReceiveX(read_len, &bytes_read);
-    double timestamp = GetTimeNS();
-    uint32_t seq_no = ntohl(recv.as<uint32_t>());
-    uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
-    data_collected.push_back(TrafficData(seq_no, nonce, timestamp));
+  fd_set fds;
 
-    if (recv.length() == 0) {
-      std::cerr << "Something went wrong. The server might have died: "
-                << strerror(errno) << "\n";
-      return RESULT_ERROR;
+  while (bytes_received < bytes_total) {
+    FD_ZERO(&fds);
+    FD_SET(ctrl_socket->raw(), &fds);
+    FD_SET(mbm_socket->raw(), &fds);
+    int num_ready = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
+    if(num_ready == -1) {
+      // error
     }
-    bytes_received += recv.length();
-    if (FLAGS_verbose) {
-      uint32_t percent = static_cast<uint32_t>(
-          static_cast<double>(100 * bytes_received) / bytes_total);
-      if (percent > last_percent) {
-        last_percent = percent;
-        std::cout << "\r" << percent << "%" << std::flush;
+    if (FD_ISSET(ctrl_socket->raw(), &fds) != 0) {
+      std::string msg = ctrl_socket->ReceiveOrDie(sizeof(END)).str();
+      std::cout << "Received END" << std::endl;
+      break;
+    }
+    if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
+      size_t remain = bytes_total - bytes_received;
+      size_t read_len = remain < chunk_len ? remain : chunk_len;
+      recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
+                                 : mbm_socket->ReceiveX(read_len, &bytes_read);
+      double timestamp = GetTimeNS();
+      uint32_t seq_no = ntohl(recv.as<uint32_t>());
+      uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
+      data_collected.push_back(TrafficData(seq_no, nonce, timestamp));
+
+      if (recv.length() == 0) {
+        std::cerr << "Something went wrong. The server might have died: "
+                  << strerror(errno) << "\n";
+        return RESULT_ERROR;
+      }
+      bytes_received += recv.length();
+      if (FLAGS_verbose) {
+        uint32_t percent = static_cast<uint32_t>(
+            static_cast<double>(100 * bytes_received) / bytes_total);
+        if (percent > last_percent) {
+          last_percent = percent;
+          std::cout << "\r" << percent << "%" << std::flush;
+        }
       }
     }
   }

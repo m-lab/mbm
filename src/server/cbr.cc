@@ -130,13 +130,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t sleep_count = 0;
   uint64_t outer_start_time = GetTimeNS();
 
-
   TrafficGenerator generator(test_socket, bytes_per_chunk);
 
   while (generator.packets_sent() < TOTAL_PACKETS_TO_SEND) {
     generator.send(1);
 
-    // TODO(Henry): determine whether to terminate traffic when result is known
     #ifdef USE_WEB100
       if (test_socket->type() == SOCKETTYPE_TCP) {
         web100::Stop();
@@ -146,8 +144,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         uint32_t packet_loss = web100::PacketRetransCount();
         if(packet_loss <= xa) {
           // PASS
+          ctrl_socket->SendOrDie(mlab::Packet(END));
         } else if(packet_loss >= xb) {
           // FAIL
+          ctrl_socket->SendOrDie(mlab::Packet(END));
         } else {
           // Continue testing
         }

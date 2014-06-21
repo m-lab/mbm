@@ -3,6 +3,7 @@
 
 #define MBM_VERSION "0.5"
 #define READY       "READY"
+#define END         "END"
 
 #define MS_PER_SEC  1000
 #define NS_PER_SEC  1000000000
