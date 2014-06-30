@@ -25,7 +25,7 @@ DEFINE_int32(rate, 600, "The rate to test. Ignored if --sweep is set.");
 DEFINE_string(socket_type, "tcp", "The transport protocol to use. Ignored if "
                                   "--sweep is set.");
 // TODO(Henry): find reasonable defaults of mss and rtt
-DEFINE_int32(mss, 1500, "The target maximum segment size in bytes");
+DEFINE_int32(mss, 1460, "The target maximum segment size in bytes");
 DEFINE_int32(rtt, 200, "The target round trip time in miliseconds");
 
 DEFINE_int32(minrate, 400, "The minimum rate to test when --sweep is active.");

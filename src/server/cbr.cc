@@ -43,7 +43,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
-  int tcp_mss = TCP_MSS;
+  uint32_t tcp_mss = TCP_MSS;
   socklen_t mss_len = sizeof(tcp_mss);
 
   switch (test_socket->type()) {
@@ -54,8 +54,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
           std::cerr << "Failed to get TCP_MAXSEG: " << strerror(errno) << "\n";
           return RESULT_ERROR;
         }
-        std::cout << "Socket does not support TCP_MAXSEG opt. "
-                     "Using default MSS: " << TCP_MSS << ".\n";
+        std::cout << "Socket does not support TCP_MAXSEG opt. " << std::endl;
       }
       break;
 
@@ -78,8 +77,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // we're going to meter the bytes into the socket interface in units of
   // tcp_mss
-  uint32_t bytes_per_chunk = tcp_mss;
+  uint32_t bytes_per_chunk = config.mss_bytes;
   ctrl_socket->SendOrDie(mlab::Packet(htonl(bytes_per_chunk)));
+
+  //  tcp max_seg is too small end the test with INCONCLUSIVE
+  if (tcp_mss < config.mss_bytes) {
+    ctrl_socket->SendOrDie(mlab::Packet(END));
+    std::cout << "failed to generate traffic" << std::endl;
+    return RESULT_INCONCLUSIVE;
+  }
 
   // calculate how many chunks per second we want to send
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
@@ -139,23 +145,26 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
     #ifdef USE_WEB100
       if (test_socket->type() == SOCKETTYPE_TCP) {
-        web100::Stop();
-        // the sequential probability ratio test
-        double xa = -h1 + s * generator.packets_sent();
-        double xb = h2 + s * generator.packets_sent();
-        uint32_t packet_loss = web100::PacketRetransCount();
-        if(packet_loss <= xa) {
-          // PASS
-          std::cout << "passed SPRT" << std::endl;
-          test_result = RESULT_PASS;
-          ctrl_socket->SendOrDie(mlab::Packet(END));
-          break;
-        } else if(packet_loss >= xb) {
-          // FAIL
-          std::cout << "failed SPRT" << std::endl;
-          test_result = RESULT_FAIL;
-          ctrl_socket->SendOrDie(mlab::Packet(END));
-          break;
+        // sample the data once a second
+        if (generator.packets_sent() % chunks_per_sec == 0) {
+          web100::Stop();
+          // the sequential probability ratio test
+          double xa = -h1 + s * generator.packets_sent();
+          double xb = h2 + s * generator.packets_sent();
+          uint32_t packet_loss = web100::PacketRetransCount();
+          if(packet_loss <= xa) {
+            // PASS
+            std::cout << "passed SPRT" << std::endl;
+            test_result = RESULT_PASS;
+            ctrl_socket->SendOrDie(mlab::Packet(END));
+            break;
+          } else if(packet_loss >= xb) {
+            // FAIL
+            std::cout << "failed SPRT" << std::endl;
+            test_result = RESULT_FAIL;
+            ctrl_socket->SendOrDie(mlab::Packet(END));
+            break;
+          }
         }
       }
     #endif
