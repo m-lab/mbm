@@ -25,8 +25,8 @@ DEFINE_int32(rate, 600, "The rate to test. Ignored if --sweep is set.");
 DEFINE_string(socket_type, "tcp", "The transport protocol to use. Ignored if "
                                   "--sweep is set.");
 // TODO(Henry): find reasonable defaults of mss and rtt
-DEFINE_int32(mss, 1000, "The target maximum segment size in bytes");
-DEFINE_int32(rtt, 1000, "The target round trip time in miliseconds");
+DEFINE_int32(mss, 1500, "The target maximum segment size in bytes");
+DEFINE_int32(rtt, 200, "The target round trip time in miliseconds");
 
 DEFINE_int32(minrate, 400, "The minimum rate to test when --sweep is active.");
 DEFINE_int32(maxrate, 1200, "The maximum rate to test when --sweep is active.");
@@ -94,7 +94,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   ssize_t bytes_read;
   const uint32_t chunk_len = ntohl(
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
-  uint32_t bytes_total = chunk_len * TOTAL_PACKETS_TO_SEND;
+  uint32_t bytes_total = chunk_len * MAX_PACKETS_TO_SEND;
   std::cout << "expecting " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
     std::cerr << "Something went wrong. The server might have died.\n";

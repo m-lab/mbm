@@ -50,7 +50,7 @@ uint32_t TrafficGenerator::send(int num_chunks){
       std::cout << "  nonce: " << std::hex << ntohl(nonce) << " " << std::dec
                 << ntohl(nonce) << "\n";
       uint32_t percent = static_cast<uint32_t>(
-          static_cast<float>(100 * packets_sent_) / TOTAL_PACKETS_TO_SEND);
+          static_cast<float>(100 * packets_sent_) / MAX_PACKETS_TO_SEND);
       if (percent > last_percent_) {
         last_percent_ = percent;
         std::cout << "\r" << percent << "%" << std::flush;

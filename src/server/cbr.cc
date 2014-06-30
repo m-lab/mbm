@@ -93,8 +93,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  chunks_per_sec: " << chunks_per_sec << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
 
-  uint32_t wire_bytes_total = bytes_per_chunk * TOTAL_PACKETS_TO_SEND;
-  std::cout << "  sending " << wire_bytes_total << " bytes\n";
+  uint32_t wire_bytes_total = bytes_per_chunk * MAX_PACKETS_TO_SEND;
+  std::cout << "  sending at most " << MAX_PACKETS_TO_SEND << " packets" << std::endl;
+  std::cout << "  sending at most " << wire_bytes_total << " bytes\n";
   std::cout << "  should take " << (1.0 * wire_bytes_total / bytes_per_sec)
             << " seconds\n";
 
@@ -113,12 +114,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double h2 = 0.0;
   if (test_socket->type() == SOCKETTYPE_TCP) {
     web100::Start();
-    // calculate the parameters used in the statistical test
-    int target_run_length = model::target_run_length(config.cbr_kb_s,
+    // calculate the parameters used in sequential probability ratio test
+    uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
                                                      config.rtt_ms,
                                                      config.mss_bytes);
     p0 = 1.0 / target_run_length;
-    p1 = 1 / (target_run_length / 4.0);
+    p1 = 1.0 / (target_run_length / 4.0);
     k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
     s = log((1-p0) / (1-p1)) / k;
     alpha = 0.05; // type I error
@@ -130,26 +131,31 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t sleep_count = 0;
   uint64_t outer_start_time = GetTimeNS();
 
+  Result test_result = RESULT_INCONCLUSIVE;
   TrafficGenerator generator(test_socket, bytes_per_chunk);
 
-  while (generator.packets_sent() < TOTAL_PACKETS_TO_SEND) {
+  while (generator.packets_sent() < MAX_PACKETS_TO_SEND) {
     generator.send(1);
 
     #ifdef USE_WEB100
       if (test_socket->type() == SOCKETTYPE_TCP) {
         web100::Stop();
-        // the statistical test
+        // the sequential probability ratio test
         double xa = -h1 + s * generator.packets_sent();
         double xb = h2 + s * generator.packets_sent();
         uint32_t packet_loss = web100::PacketRetransCount();
         if(packet_loss <= xa) {
           // PASS
+          std::cout << "passed SPRT" << std::endl;
+          test_result = RESULT_PASS;
           ctrl_socket->SendOrDie(mlab::Packet(END));
+          break;
         } else if(packet_loss >= xb) {
           // FAIL
+          std::cout << "failed SPRT" << std::endl;
+          test_result = RESULT_FAIL;
           ctrl_socket->SendOrDie(mlab::Packet(END));
-        } else {
-          // Continue testing
+          break;
         }
       }
     #endif
@@ -175,14 +181,18 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     } else {
       // Warning: start time of next chunk has already passed, no sleep
       // INCONCLUSIVE
+      std::cout << "failed to generate traffic" << std::endl;
+      break;
     }
   }
+
   uint64_t outer_end_time = GetTimeNS();
   uint64_t delta_time = outer_end_time - outer_start_time;
 
   double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
 
-  std::cout << "\nbytes sent: " << generator.total_bytes_sent() << "\n";
+  std::cout << "\nPackets sent: " << generator.packets_sent() << "\n";
+  std::cout << "bytes sent: " << generator.total_bytes_sent() << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
 
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
@@ -240,14 +250,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   }
 
-  double loss_ratio = static_cast<double>(lost_packets) / generator.packets_sent();
-  if (loss_ratio > 1.0)
-    return RESULT_INCONCLUSIVE;
+  return test_result;
+  // double loss_ratio = static_cast<double>(lost_packets) / generator.packets_sent();
+  // if (loss_ratio > 1.0)
+    // return RESULT_INCONCLUSIVE;
 
-  if (loss_ratio > config.loss_threshold)
-    return RESULT_FAIL;
+  // if (loss_ratio > config.loss_threshold)
+    // return RESULT_FAIL;
 
-  return RESULT_PASS;
+  // return RESULT_PASS;
 }
 
 }  // namespace mbm
