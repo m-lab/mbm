@@ -185,6 +185,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       // Warning: start time of next chunk has already passed, no sleep
       // INCONCLUSIVE
       std::cout << "failed to generate traffic" << std::endl;
+      ctrl_socket->SendOrDie(mlab::Packet(END));
       break;
     }
   }
