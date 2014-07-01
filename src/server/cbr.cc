@@ -54,7 +54,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
           std::cerr << "Failed to get TCP_MAXSEG: " << strerror(errno) << "\n";
           return RESULT_ERROR;
         }
-        std::cout << "Socket does not support TCP_MAXSEG opt. " << std::endl;
+        std::cout << "Socket does not support TCP_MAXSEG opt. "
+                  << "Using default " << TCP_MSS << std::endl;
       }
       break;
 
@@ -77,15 +78,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // we're going to meter the bytes into the socket interface in units of
   // tcp_mss
-  uint32_t bytes_per_chunk = config.mss_bytes;
+  uint32_t bytes_per_chunk = tcp_mss;
   ctrl_socket->SendOrDie(mlab::Packet(htonl(bytes_per_chunk)));
-
-  //  tcp max_seg is too small end the test with INCONCLUSIVE
-  if (tcp_mss < config.mss_bytes) {
-    ctrl_socket->SendOrDie(mlab::Packet(END));
-    std::cout << "failed to generate traffic" << std::endl;
-    return RESULT_INCONCLUSIVE;
-  }
 
   // calculate how many chunks per second we want to send
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
