@@ -116,7 +116,6 @@ void* ServerThread(void* server_config_data) {
     assert(ctrl_ready == READY);
     assert(test == READY);
 
-    // TODO(dominic): Consider passing the ServerConfig entirely
     Result result = RunCBR(test_socket.get(),
                            ctrl_socket,
                            config);

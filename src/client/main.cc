@@ -24,7 +24,7 @@ DEFINE_bool(sweep, false, "Perform a sweep in UDP to find the best rate for a "
 DEFINE_int32(rate, 600, "The rate to test. Ignored if --sweep is set.");
 DEFINE_string(socket_type, "tcp", "The transport protocol to use. Ignored if "
                                   "--sweep is set.");
-// TODO(Henry): find reasonable defaults of mss and rtt
+
 DEFINE_int32(mss, 1460, "The target maximum segment size in bytes");
 DEFINE_int32(rtt, 200, "The target round trip time in miliseconds");
 
@@ -95,20 +95,19 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   const uint32_t chunk_len = ntohl(
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
   uint32_t bytes_total = chunk_len * MAX_PACKETS_TO_SEND;
-  std::cout << "expecting " << bytes_total << " bytes\n";
+  std::cout << "expecting at most " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
     std::cerr << "Something went wrong. The server might have died.\n";
     return RESULT_ERROR;
   }
 
-  uint64_t start_time = GetTimeNS();
   std::vector<TrafficData> data_collected;
+  mlab::Packet recv("");
   uint32_t bytes_received = 0;
   uint32_t last_percent = 0;
 
-  mlab::Packet recv("");
-
   fd_set fds;
+  uint64_t start_time = GetTimeNS();
 
   while (bytes_received < bytes_total) {
     FD_ZERO(&fds);
@@ -166,17 +165,16 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   uint64_t delta_time = end_time - start_time;
   double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
+  double receive_rate = (bytes_received * 8) / delta_time_sec;
+  double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
 
   std::cout << "\nbytes received: " << bytes_received << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
-
-  double receive_rate = (bytes_received * 8) / delta_time_sec;
-  ctrl_socket->SendOrDie(mlab::Packet(receive_rate));
-  
-  double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
   std::cout << "receive rate: " << receive_rate << " b/sec ("
             << rate_delta_percent << "% of target)\n";
 
+  std::cout << "Sending receive rate\n";
+  ctrl_socket->SendOrDie(mlab::Packet(receive_rate));
 
   // Send the collected data back to the server
   uint32_t data_size_obj = data_collected.size();
@@ -184,7 +182,6 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
 
   std::cout << "sending collected data..." << std::endl;
-
 
   std::vector<TrafficData> send_buffer(data_size_obj);
   for (uint32_t i=0; i<data_size_obj; ++i) {
