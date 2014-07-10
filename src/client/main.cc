@@ -94,22 +94,43 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   ssize_t bytes_read;
   const uint32_t chunk_len = ntohl(
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
+  const uint32_t dump_size = ntohl(
+      ctrl_socket->ReceiveX(sizeof(dump_size), &bytes_read).as<uint32_t>());
+
+
+  // Slowstart data dump
+  std::vector<TrafficData> data_slowstart;
+  for (uint64_t i=0; i < dump_size; ++i) {
+    mlab::Packet recv = i == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
+                               : mbm_socket->ReceiveX(chunk_len, &bytes_read);
+    double timestamp = GetTimeNS();
+    uint32_t seq_no = ntohl(recv.as<uint32_t>());
+    uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
+    data_slowstart.push_back(TrafficData(seq_no, nonce, timestamp));
+
+    if (recv.length() == 0) {
+      std::cerr << "Something went wrong. The server might have died: "
+                << strerror(errno) << "\n";
+      return RESULT_ERROR;
+    }
+  }
+
+  // Actual test traffic
+  std::vector<TrafficData> data_collected;
   uint32_t bytes_total = chunk_len * MAX_PACKETS_TO_SEND;
+  uint32_t bytes_received = 0;
+  uint32_t last_percent = 0;
+
   std::cout << "expecting at most " << bytes_total << " bytes\n";
   if (bytes_total == 0) {
     std::cerr << "Something went wrong. The server might have died.\n";
     return RESULT_ERROR;
   }
 
-  std::vector<TrafficData> data_collected;
-  mlab::Packet recv("");
-  uint32_t bytes_received = 0;
-  uint32_t last_percent = 0;
-
   fd_set fds;
   uint64_t start_time = GetTimeNS();
 
-  while (bytes_received < bytes_total) {
+  while (true) {
     FD_ZERO(&fds);
     FD_SET(ctrl_socket->raw(), &fds);
     FD_SET(mbm_socket->raw(), &fds);
@@ -125,7 +146,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
       size_t remain = bytes_total - bytes_received;
       size_t read_len = remain < chunk_len ? remain : chunk_len;
-      recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
+      mlab::Packet recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
                                  : mbm_socket->ReceiveX(read_len, &bytes_read);
       double timestamp = GetTimeNS();
       uint32_t seq_no = ntohl(recv.as<uint32_t>());

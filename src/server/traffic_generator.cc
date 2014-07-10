@@ -1,3 +1,5 @@
+#include "server/traffic_generator.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
@@ -10,7 +12,7 @@
 #include "common/constants.h"
 #include "common/time.h"
 #include "gflags/gflags.h"
-#include "server/traffic_generator.h"
+#include "server/web100.h"
 
 DECLARE_bool(verbose);
 
@@ -35,7 +37,9 @@ uint32_t TrafficGenerator::send(int num_chunks){
     uint32_t nonce = htonl(rand());
     memcpy(&buffer_[0]+sizeof(packets_sent_), &nonce, sizeof(nonce));
 
+
     mlab::Packet chunk_packet(&buffer_[0], bytes_per_chunk);
+
     test_socket_->SendOrDie(chunk_packet);
 
     nonce_.push_back(ntohl(nonce));

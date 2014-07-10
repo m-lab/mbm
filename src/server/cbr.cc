@@ -88,81 +88,98 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // calculate how many ns per chunk
   uint32_t time_per_chunk_ns = NS_PER_SEC / chunks_per_sec;
 
+  // calculate how many sec per chunk
+  double time_per_chunk_sec = 1.0 / chunks_per_sec;
+
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
   std::cout << "  bytes_per_sec: " << bytes_per_sec << "\n";
   std::cout << "  bytes_per_chunk: " << bytes_per_chunk << "\n";
   std::cout << "  chunks_per_sec: " << chunks_per_sec << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
+  std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
 
+
+  // show the send buffer
+  std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
+            << std::flush;
+
+  TrafficGenerator generator(test_socket, bytes_per_chunk);
+
+
+
+  // Start the actual test
   uint32_t wire_bytes_total = bytes_per_chunk * MAX_PACKETS_TO_SEND;
   std::cout << "  sending at most " << MAX_PACKETS_TO_SEND << " packets" << std::endl;
   std::cout << "  sending at most " << wire_bytes_total << " bytes\n";
   std::cout << "  should take at most " << (1.0 * wire_bytes_total / bytes_per_sec)
             << " seconds\n";
 
-  // show the send buffer
-  std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
-            << std::flush;
 
-#ifdef USE_WEB100
-  double p0 = 0.0;
-  double p1 = 0.0;
-  double k = 0.0;
-  double s = 0.0;
-  double alpha = 0.0;
-  double beta = 0.0;
-  double h1 = 0.0;
-  double h2 = 0.0;
-  if (test_socket->type() == SOCKETTYPE_TCP) {
-    web100::Start();
-    // calculate the parameters used in sequential probability ratio test
-    uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
-                                                     config.rtt_ms,
-                                                     config.mss_bytes);
-    p0 = 1.0 / target_run_length;
-    p1 = 1.0 / (target_run_length / 4.0);
-    k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
-    s = log((1-p0) / (1-p1)) / k;
-    alpha = 0.05; // type I error
-    beta = 0.05; // type II error
-    h1 = log((1-alpha) / beta) / k;
-    h2 = log((1-beta) / alpha) / k;
-  }
-#endif
+  // Send twice the pipe size of data to avoid paced into slow start
+  uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
+                                                      config.rtt_ms,
+                                                      config.mss_bytes);
+  uint32_t dump_size = static_cast<uint32_t>(2 * target_pipe_size);
+  ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
+  generator.send(dump_size);
 
-  Result test_result = RESULT_INCONCLUSIVE;
-  TrafficGenerator generator(test_socket, bytes_per_chunk);
+  // Start the test traffic
+  #ifdef USE_WEB100
+    double p0 = 0.0;
+    double p1 = 0.0;
+    double k = 0.0;
+    double s = 0.0;
+    double alpha = 0.0;
+    double beta = 0.0;
+    double h1 = 0.0;
+    double h2 = 0.0;
+    if (test_socket->type() == SOCKETTYPE_TCP) {
+      web100::Start();
+      // calculate the parameters used in sequential probability ratio test
+      uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
+                                                            config.rtt_ms,
+                                                            config.mss_bytes);
+      p0 = 1.0 / target_run_length;
+      p1 = 1.0 / (target_run_length / 4.0);
+      k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
+      s = log((1-p0) / (1-p1)) / k;
+      alpha = 0.05; // type I error
+      beta = 0.05; // type II error
+      h1 = log((1-alpha) / beta) / k;
+      h2 = log((1-beta) / alpha) / k;
+    }
+  #endif
 
   uint32_t sleep_count = 0;
+  Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
+
   while (generator.packets_sent() < MAX_PACKETS_TO_SEND) {
     generator.send(1);
 
     #ifdef USE_WEB100
-      if (test_socket->type() == SOCKETTYPE_TCP) {
-        // sample the data once a second
-         if (generator.packets_sent() % chunks_per_sec == 0) {
-          web100::Stop();
-          // the sequential probability ratio test
-          
-          double xa = -h1 + s * generator.packets_sent();
-          double xb = h2 + s * generator.packets_sent();
-          uint32_t packet_loss = web100::PacketRetransCount();
-          if(packet_loss <= xa) {
-            // PASS
-            std::cout << "passed SPRT" << std::endl;
-            test_result = RESULT_PASS;
-            ctrl_socket->SendOrDie(mlab::Packet(END));
-            break;
-          } else if(packet_loss >= xb) {
-            // FAIL
-            std::cout << "failed SPRT" << std::endl;
-            test_result = RESULT_FAIL;
-            ctrl_socket->SendOrDie(mlab::Packet(END));
-            break;
-          }
-         }
-      }
+    if (test_socket->type() == SOCKETTYPE_TCP) {
+      // sample the data once a second
+       if (generator.packets_sent() % chunks_per_sec == 0) {
+        web100::Stop();
+        // the sequential probability ratio test
+        
+        double xa = -h1 + s * generator.packets_sent();
+        double xb = h2 + s * generator.packets_sent();
+        uint32_t packet_loss = web100::PacketRetransCount();
+        if(packet_loss <= xa) {
+          // PASS
+          std::cout << "passed SPRT" << std::endl;
+          test_result = RESULT_PASS;
+          break;
+        } else if(packet_loss >= xb) {
+          // FAIL
+          std::cout << "failed SPRT" << std::endl;
+          test_result = RESULT_FAIL;
+          break;
+        }
+       }
+    }
     #endif
     
     // figure out the start time for the next chunk
@@ -187,10 +204,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       // Warning: start time of next chunk has already passed, no sleep
       // INCONCLUSIVE
       std::cout << 1.0 * left_over_ns / NS_PER_SEC << " failed to generate traffic" << std::endl;
-      ctrl_socket->SendOrDie(mlab::Packet(END));
       break;
     }
   }
+  // notify the client that the test has ended
+  ctrl_socket->SendOrDie(mlab::Packet(END));
 
   uint64_t outer_end_time = GetTimeNS();
   uint64_t delta_time = outer_end_time - outer_start_time;
