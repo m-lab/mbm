@@ -103,27 +103,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
             << std::flush;
 
-  TrafficGenerator generator(test_socket, bytes_per_chunk);
 
-
-
-  // Start the actual test
+  // Test stat preparation
   uint32_t wire_bytes_total = bytes_per_chunk * MAX_PACKETS_TO_SEND;
   std::cout << "  sending at most " << MAX_PACKETS_TO_SEND << " packets" << std::endl;
   std::cout << "  sending at most " << wire_bytes_total << " bytes\n";
   std::cout << "  should take at most " << (1.0 * wire_bytes_total / bytes_per_sec)
             << " seconds\n";
 
-
-  // Send twice the pipe size of data to avoid paced into slow start
-  uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
-                                                      config.rtt_ms,
-                                                      config.mss_bytes);
-  uint32_t dump_size = static_cast<uint32_t>(2 * target_pipe_size);
-  ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
-  generator.send(dump_size);
-
-  // Start the test traffic
   #ifdef USE_WEB100
     double p0 = 0.0;
     double p1 = 0.0;
@@ -150,6 +137,19 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   #endif
 
+  // initialize the traffic generator for the test and slowstart
+  TrafficGenerator generator(test_socket, bytes_per_chunk);
+  TrafficGenerator slowstart_generator(test_socket, bytes_per_chunk);
+
+  // Send twice the pipe size of data to avoid paced into slow start
+  uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
+                                                      config.rtt_ms,
+                                                      config.mss_bytes);
+  uint32_t dump_size = static_cast<uint32_t>(2 * target_pipe_size);
+  ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
+  slowstart_generator.send(dump_size);
+
+  // Start the test traffic
   uint32_t sleep_count = 0;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
