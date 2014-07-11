@@ -202,18 +202,18 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   ctrl_socket->SendOrDie(mlab::Packet(htonl(data_size_obj)));
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
 
-  std::cout << "sending collected data..." << std::endl;
 
   std::vector<TrafficData> send_buffer(data_size_obj);
   for (uint32_t i=0; i<data_size_obj; ++i) {
     send_buffer[i] = TrafficData::hton(data_collected[i]);
   }
 
-  ctrl_socket->SendOrDie(
-    mlab::Packet(
+  std::cout << "Sending collected data..." << std::endl;
+  ctrl_socket->SendOrDie( mlab::Packet(
       reinterpret_cast<const char*>(&send_buffer[0]), data_size_bytes));
 
 
+  std::cout << "Receiving test result" << std::endl;
   Result result;
   mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);
   result = static_cast<Result>(ntohl(result_pkt.as<Result>()));

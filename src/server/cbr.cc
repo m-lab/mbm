@@ -243,14 +243,24 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t data_size_obj = 
     ntohl(ctrl_socket->ReceiveOrDie(sizeof(data_size_obj)).as<uint32_t>());
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
-
-  mlab::Packet recv_pkt = ctrl_socket->ReceiveOrDie(data_size_bytes);
-  const TrafficData* recv_buffer =
-    reinterpret_cast<const TrafficData*>(recv_pkt.buffer());
+  std::cout << "total data: " << data_size_bytes << " bytes" << std::endl;
 
   std::vector<TrafficData> client_data(data_size_obj);
-  for(uint32_t i=0; i<data_size_obj; ++i){
-    client_data[i] = (TrafficData::ntoh(recv_buffer[i]));
+  std::vector<uint8_t> bytes_buffer;
+  uint32_t total_recv_bytes = 0;
+  while (total_recv_bytes < data_size_bytes) {
+    mlab::Packet recv_pkt =
+      ctrl_socket->ReceiveOrDie(data_size_bytes - total_recv_bytes);
+    uint32_t recv_bytes = recv_pkt.length();
+    bytes_buffer.insert(bytes_buffer.end(),
+                        recv_pkt.buffer(),
+                        recv_pkt.buffer() + recv_bytes);
+    total_recv_bytes += recv_bytes;
+  }
+  const TrafficData* recv_buffer =
+      reinterpret_cast<const TrafficData*>(&bytes_buffer[0]);
+  for(uint32_t i=0; i < data_size_obj; ++i){
+    client_data[i] = TrafficData::ntoh(recv_buffer[i]);
   }
 
 
@@ -280,6 +290,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   }
 
+  std::cout << "Done CBR" << std::endl;
   return test_result;
 }
 
