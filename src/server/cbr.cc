@@ -145,10 +145,17 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
                                                       config.rtt_ms,
                                                       config.mss_bytes);
-  uint32_t dump_size = static_cast<uint32_t>(2 * target_pipe_size);
+  uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
   ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
   slowstart_generator.send(dump_size);
 
+  {
+    uint32_t rtt_ns = config.rtt_ms * 1000 * 1000;
+    struct timespec sleep_req = { (1 * rtt_ns) / NS_PER_SEC,
+                                  (1 * rtt_ns) % NS_PER_SEC };
+    struct timespec sleep_rem;
+    nanosleep(&sleep_req, &sleep_rem);
+  }
   // Start the test traffic
   uint32_t sleep_count = 0;
   Result test_result = RESULT_INCONCLUSIVE;
