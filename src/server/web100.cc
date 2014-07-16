@@ -156,6 +156,7 @@ void Connection::Stop() {
   curretxqueue->stop();
   curappwqueue->stop();
   samplertt->stop();
+  curcwnd->stop();
   snduna->stop();
   sndnxt->stop();
 }
