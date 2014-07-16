@@ -10,15 +10,29 @@ extern "C" {
 }
 
 #include <string>
+#include <iostream>
 
 #include "common/constants.h"
 #include "mlab/socket.h"
 
 namespace web100 {
-namespace {
+
 web100_agent* agent = NULL;
 
-class Var {
+void Initialize() {
+  agent = web100_attach(WEB100_AGENT_TYPE_LOCAL, NULL);
+  if (agent == NULL) {
+    web100_perror("web100");
+    perror("sys");
+    assert(false);
+  }
+}
+
+void Shutdown() {
+  web100_detach(agent);
+}
+
+class Connection::Var {
  public:
   explicit Var(const std::string& name, web100_connection* connection)
       : var_(NULL),
@@ -104,22 +118,8 @@ class Var {
   bool stopped;
 };
 
-Var* pktsretrans = NULL;
-Var* curretxqueue = NULL;
-Var* curappwqueue = NULL;
-Var* samplertt = NULL;
-}  // namespace
 
-void Initialize() {
-  agent = web100_attach(WEB100_AGENT_TYPE_LOCAL, NULL);
-  if (agent == NULL) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
-  }
-}
-
-void CreateConnection(const mlab::Socket* socket) {
+Connection::Connection(const mlab::Socket* socket){
   web100_connection* connection =
       web100_connection_from_socket(agent, socket->raw());
   if (connection == NULL) {
@@ -132,43 +132,62 @@ void CreateConnection(const mlab::Socket* socket) {
   curretxqueue = new Var("CurRetxQueue", connection);
   curappwqueue = new Var("CurAppWQueue", connection);
   samplertt = new Var("SampleRTT", connection);
+  curcwnd = new Var("CurCwnd", connection);
+  snduna = new Var("SndUna", connection);
+  sndnxt = new Var("SndNxt", connection);
 }
 
-void Start() {
+Connection::~Connection(){
+    delete pktsretrans;
+    delete curretxqueue;
+    delete curappwqueue;
+    delete samplertt;
+    delete curcwnd;
+    delete snduna;
+    delete sndnxt;
+}
+
+void Connection::Start() {
   pktsretrans->start();
 }
 
-void Stop() {
+void Connection::Stop() {
   pktsretrans->stop();
   curretxqueue->stop();
   curappwqueue->stop();
   samplertt->stop();
+  snduna->stop();
+  sndnxt->stop();
 }
 
-uint32_t PacketRetransCount() {
+uint32_t Connection::PacketRetransCount() {
   return pktsretrans->delta();
 }
 
-uint32_t RetransmitQueueSize() {
+uint32_t Connection::RetransmitQueueSize() {
   return curretxqueue->get();
 }
 
-uint32_t ApplicationWriteQueueSize() {
+uint32_t Connection::ApplicationWriteQueueSize() {
   return curappwqueue->get();
 }
 
-uint32_t SampleRTT() {
+uint32_t Connection::SampleRTT() {
   return samplertt->get();
 }
 
-void Shutdown() {
-  delete samplertt;
-  delete curretxqueue;
-  delete curappwqueue;
-  delete pktsretrans;
-
-  web100_detach(agent);
+uint32_t Connection::CurCwnd() {
+  return curcwnd->get();
 }
+
+uint32_t Connection::SndUna() {
+  return snduna->get();
+}
+
+uint32_t Connection::SndNxt() {
+  return sndnxt->get();
+}
+
 }  // namespace web100
 
 #endif  // USE_WEB100

@@ -35,10 +35,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
 #ifdef USE_WEB100
-  if (test_socket->type() == SOCKETTYPE_TCP)
-    web100::CreateConnection(test_socket);
+  // TODO(Henry): fixed the initialization problem if test is UDP
+  web100::Connection test_connection(test_socket);
 #endif
-
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
@@ -121,7 +120,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     double h1 = 0.0;
     double h2 = 0.0;
     if (test_socket->type() == SOCKETTYPE_TCP) {
-      web100::Start();
+      test_connection.Start();
       // calculate the parameters used in sequential probability ratio test
       uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
                                                             config.rtt_ms,
@@ -168,12 +167,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     if (test_socket->type() == SOCKETTYPE_TCP) {
       // sample the data once a second
        if (generator.packets_sent() % chunks_per_sec == 0) {
-        web100::Stop();
+        test_connection.Stop();
         // the sequential probability ratio test
         
         double xa = -h1 + s * generator.packets_sent();
         double xb = h2 + s * generator.packets_sent();
-        uint32_t packet_loss = web100::PacketRetransCount();
+        uint32_t packet_loss = test_connection.PacketRetransCount();
         if(packet_loss <= xa) {
           // PASS
           std::cout << "passed SPRT" << std::endl;
@@ -230,11 +229,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
 #ifdef USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
-    web100::Stop();
-    lost_packets = web100::PacketRetransCount();
-    application_write_queue = web100::ApplicationWriteQueueSize();
-    retransmit_queue = web100::RetransmitQueueSize();
-    rtt_sec = static_cast<double>(web100::SampleRTT()) / MS_PER_SEC;
+    test_connection.Stop();
+    lost_packets = test_connection.PacketRetransCount();
+    application_write_queue = test_connection.ApplicationWriteQueueSize();
+    retransmit_queue = test_connection.RetransmitQueueSize();
+    rtt_sec = static_cast<double>(test_connection.SampleRTT()) / MS_PER_SEC;
   }
 #endif
 
@@ -286,6 +285,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  rtt: " << rtt_sec << "\n";
   std::cout << "  sent: " << generator.packets_sent() << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
+
 
 
   if (rtt_sec > 0.0) {
