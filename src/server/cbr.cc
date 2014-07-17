@@ -113,19 +113,21 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
                                                         config.mss_bytes);
   uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
 
-  // initialize the traffic generator for to grow cwnd
-  TrafficGenerator growth_generator(test_socket, bytes_per_chunk);
 
-  // Send twice the pipe size of data to avoid paced into slow start
+
   #ifdef USE_WEB100
+  TrafficGenerator growth_generator(test_socket, bytes_per_chunk);
   web100::Connection growth_connection(test_socket);
   growth_connection.Start();
   //uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
   //ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
   std::cout << "start growing phase" << std::endl;
-  while (true) {
+  while (growth_generator.packets_sent() < MAX_PACKETS_TO_SEND) {
     growth_connection.Stop();
-    if (growth_connection.CurCwnd() >= target_pipe_size_bytes) break;
+    if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
+      std::cout << "cwnd reached" << std::endl;
+      break;
+    }
     growth_generator.send(target_pipe_size);
     struct timespec sleep_req = { config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
                                   config.rtt_ms * 1000 * 1000 % NS_PER_SEC };
@@ -213,6 +215,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   }
   // notify the client that the test has ended
+  {
+    uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
+    struct timespec sleep_req = { rtt_ns / NS_PER_SEC, rtt_ns % NS_PER_SEC };
+    struct timespec sleep_rem;
+    nanosleep(&sleep_req, &sleep_rem);
+  }
   ctrl_socket->SendOrDie(mlab::Packet(END));
 
   uint64_t outer_end_time = GetTimeNS();
