@@ -94,24 +94,37 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   ssize_t bytes_read;
   const uint32_t chunk_len = ntohl(
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
-  const uint32_t dump_size = ntohl(
-      ctrl_socket->ReceiveX(sizeof(dump_size), &bytes_read).as<uint32_t>());
 
 
-  // Slowstart data dump
+  // data for growing cwnd
   std::vector<TrafficData> data_slowstart;
-  for (uint64_t i=0; i < dump_size; ++i) {
-    mlab::Packet recv = i == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
-                               : mbm_socket->ReceiveX(chunk_len, &bytes_read);
-    double timestamp = GetTimeNS();
-    uint32_t seq_no = ntohl(recv.as<uint32_t>());
-    uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
-    data_slowstart.push_back(TrafficData(seq_no, nonce, timestamp));
 
-    if (recv.length() == 0) {
-      std::cerr << "Something went wrong. The server might have died: "
-                << strerror(errno) << "\n";
-      return RESULT_ERROR;
+  fd_set fds;
+  while (true) {
+    FD_ZERO(&fds);
+    FD_SET(ctrl_socket->raw(), &fds);
+    FD_SET(mbm_socket->raw(), &fds);
+    int num_ready = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
+    if(num_ready == -1) {
+      // error
+    }
+    if (FD_ISSET(ctrl_socket->raw(), &fds) != 0) {
+      std::string msg = ctrl_socket->ReceiveOrDie(sizeof(END)).str();
+      std::cout << "Received END" << std::endl;
+      break;
+    }
+    if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
+      mlab::Packet recv = mbm_socket->ReceiveX(chunk_len, &bytes_read);
+      double timestamp = GetTimeNS();
+      uint32_t seq_no = ntohl(recv.as<uint32_t>());
+      uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
+      data_slowstart.push_back(TrafficData(seq_no, nonce, timestamp));
+
+      if (recv.length() == 0) {
+        std::cerr << "Something went wrong. The server might have died: "
+                  << strerror(errno) << "\n";
+        return RESULT_ERROR;
+      }
     }
   }
 
@@ -127,9 +140,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     return RESULT_ERROR;
   }
 
-  fd_set fds;
-  uint64_t start_time = GetTimeNS();
 
+  uint64_t start_time = GetTimeNS();
   while (true) {
     FD_ZERO(&fds);
     FD_SET(ctrl_socket->raw(), &fds);
@@ -144,10 +156,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
       break;
     }
     if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
-      size_t remain = bytes_total - bytes_received;
-      size_t read_len = remain < chunk_len ? remain : chunk_len;
-      mlab::Packet recv = bytes_received == 0 ? mbm_socket->ReceiveOrDie(chunk_len)
-                                 : mbm_socket->ReceiveX(read_len, &bytes_read);
+      mlab::Packet recv = mbm_socket->ReceiveX(chunk_len, &bytes_read);
       double timestamp = GetTimeNS();
       uint32_t seq_no = ntohl(recv.as<uint32_t>());
       uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));

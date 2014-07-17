@@ -19,6 +19,7 @@
 #include "common/time.h"
 #include "common/traffic_data.h"
 #include "server/traffic_generator.h"
+#include "server/stat_test.h"
 #include "gflags/gflags.h"
 #include "mlab/socket.h"
 #include "mlab/accepted_socket.h"
@@ -34,10 +35,7 @@ namespace mbm {
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
-#ifdef USE_WEB100
-  // TODO(Henry): fixed the initialization problem if test is UDP
-  web100::Connection test_connection(test_socket);
-#endif
+
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
@@ -90,6 +88,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // calculate how many sec per chunk
   double time_per_chunk_sec = 1.0 / chunks_per_sec;
 
+  // traffic pattern log
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
   std::cout << "  bytes_per_sec: " << bytes_per_sec << "\n";
   std::cout << "  bytes_per_chunk: " << bytes_per_chunk << "\n";
@@ -97,65 +96,68 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
   std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
 
-
-  // show the send buffer
-  std::cout << "  so_sndbuf: " << test_socket->GetSendBufferSize() << "\n"
-            << std::flush;
-
-
-  // Test stat preparation
   uint32_t wire_bytes_total = bytes_per_chunk * MAX_PACKETS_TO_SEND;
   std::cout << "  sending at most " << MAX_PACKETS_TO_SEND << " packets" << std::endl;
   std::cout << "  sending at most " << wire_bytes_total << " bytes\n";
   std::cout << "  should take at most " << (1.0 * wire_bytes_total / bytes_per_sec)
             << " seconds\n";
 
-  #ifdef USE_WEB100
-    double p0 = 0.0;
-    double p1 = 0.0;
-    double k = 0.0;
-    double s = 0.0;
-    double alpha = 0.0;
-    double beta = 0.0;
-    double h1 = 0.0;
-    double h2 = 0.0;
-    if (test_socket->type() == SOCKETTYPE_TCP) {
-      test_connection.Start();
-      // calculate the parameters used in sequential probability ratio test
-      uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
-                                                            config.rtt_ms,
-                                                            config.mss_bytes);
-      p0 = 1.0 / target_run_length;
-      p1 = 1.0 / (target_run_length / 4.0);
-      k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
-      s = log((1-p0) / (1-p1)) / k;
-      alpha = 0.05; // type I error
-      beta = 0.05; // type II error
-      h1 = log((1-alpha) / beta) / k;
-      h2 = log((1-beta) / alpha) / k;
-    }
-  #endif
 
-  // initialize the traffic generator for the test and slowstart
-  TrafficGenerator generator(test_socket, bytes_per_chunk);
-  TrafficGenerator slowstart_generator(test_socket, bytes_per_chunk);
 
-  // Send twice the pipe size of data to avoid paced into slow start
+  // Model Computation
   uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
                                                       config.rtt_ms,
                                                       config.mss_bytes);
-  uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
-  ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
-  slowstart_generator.send(dump_size);
+  uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
+                                                        config.rtt_ms,
+                                                        config.mss_bytes);
+  uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
 
-  {
-    uint32_t rtt_ns = config.rtt_ms * 1000 * 1000;
-    struct timespec sleep_req = { (1 * rtt_ns) / NS_PER_SEC,
-                                  (1 * rtt_ns) % NS_PER_SEC };
+  // initialize the traffic generator for to grow cwnd
+  TrafficGenerator growth_generator(test_socket, bytes_per_chunk);
+
+  // Send twice the pipe size of data to avoid paced into slow start
+  #ifdef USE_WEB100
+  web100::Connection growth_connection(test_socket);
+  growth_connection.Start();
+  //uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
+  //ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
+  std::cout << "start growing phase" << std::endl;
+  while (true) {
+    growth_connection.Stop();
+    if (growth_connection.CurCwnd() >= target_pipe_size_bytes) break;
+    growth_generator.send(target_pipe_size);
+    struct timespec sleep_req = { config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
+                                  config.rtt_ms * 1000 * 1000 % NS_PER_SEC };
     struct timespec sleep_rem;
     nanosleep(&sleep_req, &sleep_rem);
   }
-  // Start the test traffic
+  std::cout << "growing phase done" << std::endl;
+
+  while (growth_connection.SndNxt() - growth_connection.SndUna()
+          >= target_pipe_size_bytes / 2) {
+  }
+  std::cout << "done spinning" << std::endl;
+
+  {
+    struct timespec sleep_req = {0, NS_PER_SEC / 10 };
+    struct timespec sleep_rem;
+    nanosleep(&sleep_req, &sleep_rem);
+  }
+  // notify the client that the init phase has ended
+  ctrl_socket->SendOrDie(mlab::Packet(END));
+  #endif
+
+
+
+  // Start the test
+  StatTest tester(target_run_length);
+  TrafficGenerator generator(test_socket, bytes_per_chunk);
+  #ifdef USE_WEB100
+  web100::Connection test_connection(test_socket);
+  test_connection.Start();
+  #endif
+
   uint32_t sleep_count = 0;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
@@ -166,22 +168,18 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     #ifdef USE_WEB100
     if (test_socket->type() == SOCKETTYPE_TCP) {
       // sample the data once a second
-       if (generator.packets_sent() % chunks_per_sec == 0) {
+      if (generator.packets_sent() % chunks_per_sec == 0) {
+        // statistical test
         test_connection.Stop();
-        // the sequential probability ratio test
-        
-        double xa = -h1 + s * generator.packets_sent();
-        double xb = h2 + s * generator.packets_sent();
-        uint32_t packet_loss = test_connection.PacketRetransCount();
-        if(packet_loss <= xa) {
-          // PASS
+        uint32_t loss = test_connection.PacketRetransCount();
+        uint32_t n = generator.packets_sent();
+
+        test_result = tester.test_result(n, loss);
+        if (test_result == RESULT_PASS) {
           std::cout << "passed SPRT" << std::endl;
-          test_result = RESULT_PASS;
           break;
-        } else if(packet_loss >= xb) {
-          // FAIL
+        } else if (test_result == RESULT_FAIL) {
           std::cout << "failed SPRT" << std::endl;
-          test_result = RESULT_FAIL;
           break;
         }
        }
@@ -209,7 +207,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     } else {
       // Warning: start time of next chunk has already passed, no sleep
       // INCONCLUSIVE
-      std::cout << 1.0 * left_over_ns / NS_PER_SEC << " failed to generate traffic" << std::endl;
+      std::cout << "failed by " << 1.0 * left_over_ns / NS_PER_SEC
+                << "s to generate traffic" << std::endl;
       break;
     }
   }
@@ -249,7 +248,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t data_size_obj = 
     ntohl(ctrl_socket->ReceiveOrDie(sizeof(data_size_obj)).as<uint32_t>());
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
-  std::cout << "total data: " << data_size_bytes << " bytes" << std::endl;
+  std::cout << "client data: " << data_size_bytes << " bytes" << std::endl;
 
   std::vector<TrafficData> client_data(data_size_obj);
   std::vector<uint8_t> bytes_buffer;
@@ -285,8 +284,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  rtt: " << rtt_sec << "\n";
   std::cout << "  sent: " << generator.packets_sent() << "\n";
   std::cout << "  slept: " << sleep_count << "\n";
-
-
 
   if (rtt_sec > 0.0) {
     if ((application_write_queue + retransmit_queue) / rtt_sec <
