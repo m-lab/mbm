@@ -91,8 +91,7 @@ void* ServerThread(void* server_config_data) {
 
     std::cout << "Setting config [" << config.socket_type << " | "
               << config.cbr_kb_s << " kb/s | " << config.rtt_ms << " ms | "
-              << config.mss_bytes << " bytes | " << config.loss_threshold
-              << " %]\n";
+              << config.mss_bytes << " bytes" << " ]\n";
 
 
     // TODO: Consider not dying but picking a different port.

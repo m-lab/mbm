@@ -8,16 +8,18 @@ class TrafficData {
   public:
     static TrafficData ntoh(const TrafficData &data);
     static TrafficData hton(const TrafficData &data);
-    TrafficData(uint32_t seq_no, uint32_t nonce, double timestamp);
+    TrafficData(uint32_t seq_no, uint32_t nonce, uint64_t timestamp);
     TrafficData();
     uint32_t seq_no() const { return seq_no_; };
     uint32_t nonce() const { return nonce_; };
-    double timestamp() const { return timestamp_; };
+    uint64_t timestamp() const;
 
   private:
+    TrafficData(uint32_t seq_no, uint32_t nonce, uint32_t sec, uint32_t rem);
     uint32_t seq_no_;
     uint32_t nonce_;
-    double timestamp_;
+    uint32_t sec_;
+    uint32_t rem_;
 };
 }  // namespace mbm
 

@@ -12,6 +12,7 @@
 #include <math.h>
 
 #include <iostream>
+#include <fstream>
 
 #include "common/config.h"
 #include "common/constants.h"
@@ -39,7 +40,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
-
 
   uint32_t tcp_mss = config.mss_bytes;
   socklen_t mss_len = sizeof(tcp_mss);
@@ -96,10 +96,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
   std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
 
-  uint32_t wire_bytes_total = bytes_per_chunk * MAX_PACKETS_TO_SEND;
-  std::cout << "  sending at most " << MAX_PACKETS_TO_SEND << " packets" << std::endl;
-  std::cout << "  sending at most " << wire_bytes_total << " bytes\n";
-  std::cout << "  should take at most " << (1.0 * wire_bytes_total / bytes_per_sec)
+  uint32_t cwnd_bytes_total = bytes_per_chunk * MAX_PACKETS_CWND;
+  std::cout << "  sending at most " << MAX_PACKETS_CWND
+            << " packets (" << cwnd_bytes_total << " bytes)"
+            << " to grow cwnd" << std::endl;
+  uint32_t test_bytes_total = bytes_per_chunk * MAX_PACKETS_TEST;
+  std::cout << "  sending at most " << MAX_PACKETS_TEST
+            << " test packets (" << test_bytes_total << " bytes)\n";
+  std::cout << "  should take at most "
+            << (1.0 * (test_bytes_total + cwnd_bytes_total) / bytes_per_sec)
             << " seconds\n";
 
 
@@ -116,13 +121,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
 
   #ifdef USE_WEB100
-  TrafficGenerator growth_generator(test_socket, bytes_per_chunk);
+// TCP SPECIFIC
+  TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
   web100::Connection growth_connection(test_socket);
   growth_connection.Start();
   //uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
   //ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
   std::cout << "start growing phase" << std::endl;
-  while (growth_generator.packets_sent() < MAX_PACKETS_TO_SEND) {
+  while (growth_generator.packets_sent() < MAX_PACKETS_CWND) {
     growth_connection.Stop();
     if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
       std::cout << "cwnd reached" << std::endl;
@@ -140,21 +146,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
           >= target_pipe_size_bytes / 2) {
   }
   std::cout << "done spinning" << std::endl;
-
-  {
-    struct timespec sleep_req = {0, NS_PER_SEC / 10 };
-    struct timespec sleep_rem;
-    nanosleep(&sleep_req, &sleep_rem);
-  }
-  // notify the client that the init phase has ended
-  ctrl_socket->SendOrDie(mlab::Packet(END));
   #endif
 
 
 
   // Start the test
   StatTest tester(target_run_length);
-  TrafficGenerator generator(test_socket, bytes_per_chunk);
+  TrafficGenerator generator(test_socket, bytes_per_chunk, MAX_PACKETS_TEST);
   #ifdef USE_WEB100
   web100::Connection test_connection(test_socket);
   test_connection.Start();
@@ -164,10 +162,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
 
-  while (generator.packets_sent() < MAX_PACKETS_TO_SEND) {
+  while (generator.packets_sent() < MAX_PACKETS_TEST) {
     generator.send(1);
 
     #ifdef USE_WEB100
+// TCP SPECIFIC
     if (test_socket->type() == SOCKETTYPE_TCP) {
       // sample the data once a second
       if (generator.packets_sent() % chunks_per_sec == 0) {
@@ -235,6 +234,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double rtt_sec = 0.0;
 
 #ifdef USE_WEB100
+// TCP SPECIFIC
   if (test_socket->type() == SOCKETTYPE_TCP) {
     test_connection.Stop();
     lost_packets = test_connection.PacketRetransCount();
@@ -247,9 +247,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Observed data rates
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
   double send_rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
-  double recv_rate =
-    ctrl_socket->ReceiveOrDie(sizeof(recv_rate)).as<double>();
-  double recv_rate_delta_percent = (recv_rate * 100) / (bytes_per_sec * 8);
+  // double recv_rate =
+    // ctrl_socket->ReceiveOrDie(sizeof(recv_rate)).as<double>();
+  // double recv_rate_delta_percent = (recv_rate * 100) / (bytes_per_sec * 8);
 
 
   // Receive the data collected by the client
@@ -272,7 +272,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
   const TrafficData* recv_buffer =
       reinterpret_cast<const TrafficData*>(&bytes_buffer[0]);
-  for(uint32_t i=0; i < data_size_obj; ++i){
+  for (uint32_t i=0; i < data_size_obj; ++i) {
     client_data[i] = TrafficData::ntoh(recv_buffer[i]);
   }
 
@@ -282,10 +282,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "time: " << delta_time_sec << "\n";
   std::cout << "send rate: " << send_rate << " b/sec ("
             << send_rate_delta_percent << "% of target)\n";
-  std::cout << "recv rate: " << recv_rate << " b/sec ("
-            << recv_rate_delta_percent << "% of target)\n";
+  // std::cout << "recv rate: " << recv_rate << " b/sec ("
+            // << recv_rate_delta_percent << "% of target)\n";
 
-
+// TCP SPECIFIC
   std::cout << "  lost: " << lost_packets << "\n";
   std::cout << "  write queue: " << application_write_queue << "\n";
   std::cout << "  retransmit queue: " << retransmit_queue << "\n";
@@ -301,6 +301,16 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       std::cout << "  failed to keep up\n";
     }
   }
+
+  std::ofstream fs;
+  fs.open("/home/mlab_pipeline/mbm_fork/test.txt");
+  fs << "seq_no " << "nonce " << "pkt_size " << "timestamp " << std::endl;
+  for (std::vector<TrafficData>::const_iterator it = client_data.begin();
+       it != client_data.end(); ++it) {
+    fs << it->seq_no() << ' ' << it->nonce() << ' '
+       << ' ' << it->timestamp() << std::endl;
+  }
+  fs.close();
 
   std::cout << "Done CBR" << std::endl;
   return test_result;

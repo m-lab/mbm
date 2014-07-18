@@ -19,8 +19,9 @@ DECLARE_bool(verbose);
 namespace mbm {
 
 TrafficGenerator::TrafficGenerator(const mlab::AcceptedSocket *test_socket,
-                                   uint32_t bytes_per_chunk)
+                                   uint32_t bytes_per_chunk, uint32_t max_pkt)
     : test_socket_(test_socket),
+      max_packets_(max_pkt),
       bytes_per_chunk(bytes_per_chunk),
       total_bytes_sent_(0),
       packets_sent_(0),
@@ -53,11 +54,13 @@ uint32_t TrafficGenerator::send(int num_chunks){
                 << ntohl(seq_no) << "\n";
       std::cout << "  nonce: " << std::hex << ntohl(nonce) << " " << std::dec
                 << ntohl(nonce) << "\n";
-      uint32_t percent = static_cast<uint32_t>(
-          static_cast<float>(100 * packets_sent_) / MAX_PACKETS_TO_SEND);
-      if (percent > last_percent_) {
-        last_percent_ = percent;
-        std::cout << "\r" << percent << "%" << std::flush;
+      if (max_packets_ != 0) {
+        uint32_t percent = static_cast<uint32_t>(
+            static_cast<float>(100 * packets_sent_) / max_packets_);
+        if (percent > last_percent_) {
+          last_percent_ = percent;
+          std::cout << "\r" << percent << "%" << std::flush;
+        }
       }
     }
   } // for loop

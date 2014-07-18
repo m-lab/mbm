@@ -70,7 +70,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
       mlab::ClientSocket::CreateOrDie(server, FLAGS_port));
 
   std::cout << "Sending config\n";
-  const Config config(socket_type, rate, rtt, mss, 0.0);
+  const Config config(socket_type, rate, rtt, mss);
   ctrl_socket->SendOrDie(mlab::Packet(config));
 
   std::cout << "Getting port\n";
@@ -96,52 +96,15 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
 
 
-  // data for growing cwnd
-  std::vector<TrafficData> data_slowstart;
-
-  fd_set fds;
-  while (true) {
-    FD_ZERO(&fds);
-    FD_SET(ctrl_socket->raw(), &fds);
-    FD_SET(mbm_socket->raw(), &fds);
-    int num_ready = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
-    if(num_ready == -1) {
-      // error
-    }
-    if (FD_ISSET(ctrl_socket->raw(), &fds) != 0) {
-      std::string msg = ctrl_socket->ReceiveOrDie(sizeof(END)).str();
-      std::cout << "Received END" << std::endl;
-      break;
-    }
-    if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
-      mlab::Packet recv = mbm_socket->ReceiveX(chunk_len, &bytes_read);
-      double timestamp = GetTimeNS();
-      uint32_t seq_no = ntohl(recv.as<uint32_t>());
-      uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
-      data_slowstart.push_back(TrafficData(seq_no, nonce, timestamp));
-
-      if (recv.length() == 0) {
-        std::cerr << "Something went wrong. The server might have died: "
-                  << strerror(errno) << "\n";
-        return RESULT_ERROR;
-      }
-    }
-  }
-
-  // Actual test traffic
+  // test traffic
   std::vector<TrafficData> data_collected;
-  uint32_t bytes_total = chunk_len * MAX_PACKETS_TO_SEND;
-  uint32_t bytes_received = 0;
-  uint32_t last_percent = 0;
 
-  std::cout << "expecting at most " << bytes_total << " bytes\n";
-  if (bytes_total == 0) {
-    std::cerr << "Something went wrong. The server might have died.\n";
-    return RESULT_ERROR;
-  }
+  std::cout << "expecting at most " <<  MAX_PACKETS_CWND
+            << " packets cwnd control traffic\n";
+  std::cout << "expecting at most " <<  MAX_PACKETS_TEST
+            << " packets test traffic\n";
 
-
-  uint64_t start_time = GetTimeNS();
+  fd_set fds; 
   while (true) {
     FD_ZERO(&fds);
     FD_SET(ctrl_socket->raw(), &fds);
@@ -157,8 +120,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     }
     if (FD_ISSET(mbm_socket->raw(), &fds) != 0) {
       mlab::Packet recv = mbm_socket->ReceiveX(chunk_len, &bytes_read);
-      double timestamp = GetTimeNS();
       uint32_t seq_no = ntohl(recv.as<uint32_t>());
+      uint64_t timestamp = GetTimeNS();
       uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
       data_collected.push_back(TrafficData(seq_no, nonce, timestamp));
 
@@ -167,18 +130,8 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
                   << strerror(errno) << "\n";
         return RESULT_ERROR;
       }
-      bytes_received += recv.length();
-      if (FLAGS_verbose) {
-        uint32_t percent = static_cast<uint32_t>(
-            static_cast<double>(100 * bytes_received) / bytes_total);
-        if (percent > last_percent) {
-          last_percent = percent;
-          std::cout << "\r" << percent << "%" << std::flush;
-        }
-      }
     }
   }
-  uint64_t end_time = GetTimeNS();
 
 
   if (FLAGS_verbose) {
@@ -192,19 +145,6 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
                 << std::dec << it->timestamp() << "\n";
     }
   }
-
-  uint64_t delta_time = end_time - start_time;
-  double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
-  double receive_rate = (bytes_received * 8) / delta_time_sec;
-  double rate_delta_percent = (receive_rate * 100) / (rate * 1000);
-
-  std::cout << "\nbytes received: " << bytes_received << "\n";
-  std::cout << "time: " << delta_time_sec << "\n";
-  std::cout << "receive rate: " << receive_rate << " b/sec ("
-            << rate_delta_percent << "% of target)\n";
-
-  std::cout << "Sending receive rate\n";
-  ctrl_socket->SendOrDie(mlab::Packet(receive_rate));
 
   // Send the collected data back to the server
   uint32_t data_size_obj = data_collected.size();
