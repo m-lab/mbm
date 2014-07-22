@@ -220,9 +220,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   ctrl_socket->SendOrDie(mlab::Packet(END));
 
 
+  uint32_t lost_packets = 0;
 #ifdef USE_WEB100
   // Traffic statistics from web100
-  uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;
   uint32_t retransmit_queue = 0;
   double rtt_sec = 0.0;
@@ -239,10 +239,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Observed data rates
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
   double send_rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
-  // double recv_rate =
-    // ctrl_socket->ReceiveOrDie(sizeof(recv_rate)).as<double>();
-  // double recv_rate_delta_percent = (recv_rate * 100) / (bytes_per_sec * 8);
-
 
   // Receive the data collected by the client
   uint32_t data_size_obj = 
@@ -269,13 +265,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
 
 
+  if (test_socket->type() == SOCKETTYPE_UDP) {
+    lost_packets = generator.packets_sent() - data_size_obj;
+  }
+
   std::cout << "\npackets sent: " << generator.packets_sent() << "\n";
   std::cout << "bytes sent: " << generator.total_bytes_sent() << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
   std::cout << "send rate: " << send_rate << " b/sec ("
             << send_rate_delta_percent << "% of target)\n";
-  // std::cout << "recv rate: " << recv_rate << " b/sec ("
-            // << recv_rate_delta_percent << "% of target)\n";
 
 #ifdef USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -294,6 +292,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
   }
 #endif
+  if (test_socket->type() == SOCKETTYPE_UDP) {
+    std::cout << "  lost: " << lost_packets << "\n";
+  }
 
   std::ofstream fs;
   fs.open("/home/mlab_pipeline/mbm_fork/test.txt");
@@ -306,7 +307,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   fs.close();
 
   std::cout << "Done CBR" << std::endl;
-  return test_result;
+  if (test_socket->type() == SOCKETTYPE_TCP)
+    return test_result;
+  else return tester.test_result(generator.packets_sent(), lost_packets);
 }
 
 }  // namespace mbm
