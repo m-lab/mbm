@@ -33,6 +33,7 @@ class Connection {
 
   private:
     class Var;
+    const mlab::Socket* socket_;
     Var* pktsretrans;
     Var* curretxqueue;
     Var* curappwqueue;

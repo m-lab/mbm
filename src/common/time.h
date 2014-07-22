@@ -5,6 +5,8 @@
 
 namespace mbm {
 uint64_t GetTimeNS();
+void NanoSleepX(uint64_t sec, uint64_t ns);
+
 }  // namespace mbm
 
 #endif  // COMMON_TIME_H_

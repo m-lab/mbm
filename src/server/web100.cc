@@ -119,25 +119,29 @@ class Connection::Var {
 };
 
 
-Connection::Connection(const mlab::Socket* socket){
-  web100_connection* connection =
-      web100_connection_from_socket(agent, socket->raw());
-  if (connection == NULL) {
-    web100_perror("web100");
-    perror("sys");
-    assert(false);
-  }
+Connection::Connection(const mlab::Socket* socket):
+    socket_(socket){
+  if (socket_->type() == SOCKETTYPE_TCP) {
+    web100_connection* connection =
+        web100_connection_from_socket(agent, socket->raw());
+    if (connection == NULL) {
+      web100_perror("web100");
+      perror("sys");
+      assert(false);
+    }
 
-  pktsretrans = new Var("PktsRetrans", connection);
-  curretxqueue = new Var("CurRetxQueue", connection);
-  curappwqueue = new Var("CurAppWQueue", connection);
-  samplertt = new Var("SampleRTT", connection);
-  curcwnd = new Var("CurCwnd", connection);
-  snduna = new Var("SndUna", connection);
-  sndnxt = new Var("SndNxt", connection);
+    pktsretrans = new Var("PktsRetrans", connection);
+    curretxqueue = new Var("CurRetxQueue", connection);
+    curappwqueue = new Var("CurAppWQueue", connection);
+    samplertt = new Var("SampleRTT", connection);
+    curcwnd = new Var("CurCwnd", connection);
+    snduna = new Var("SndUna", connection);
+    sndnxt = new Var("SndNxt", connection);
+  }
 }
 
 Connection::~Connection(){
+  if (socket_->type() == SOCKETTYPE_TCP) {
     delete pktsretrans;
     delete curretxqueue;
     delete curappwqueue;
@@ -145,6 +149,7 @@ Connection::~Connection(){
     delete curcwnd;
     delete snduna;
     delete sndnxt;
+  }
 }
 
 void Connection::Start() {

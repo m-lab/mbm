@@ -76,7 +76,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // we're going to meter the bytes into the socket interface in units of
   // tcp_mss
-  uint32_t bytes_per_chunk = std::min(tcp_mss, config.mss_bytes); 
+  uint32_t bytes_per_chunk = config.mss_bytes;
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    bytes_per_chunk = std::min(config.mss_bytes, tcp_mss);
+  }
   ctrl_socket->SendOrDie(mlab::Packet(htonl(bytes_per_chunk)));
 
   // calculate how many chunks per second we want to send
@@ -96,13 +99,18 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
   std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
 
-  uint32_t cwnd_bytes_total = bytes_per_chunk * MAX_PACKETS_CWND;
-  std::cout << "  sending at most " << MAX_PACKETS_CWND
-            << " packets (" << cwnd_bytes_total << " bytes)"
-            << " to grow cwnd" << std::endl;
+  uint32_t cwnd_bytes_total = 0;
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    cwnd_bytes_total = bytes_per_chunk * MAX_PACKETS_CWND;
+    std::cout << "  sending at most " << MAX_PACKETS_CWND
+              << " packets (" << cwnd_bytes_total << " bytes)"
+              << " to grow cwnd" << std::endl;
+  }
   uint32_t test_bytes_total = bytes_per_chunk * MAX_PACKETS_TEST;
   std::cout << "  sending at most " << MAX_PACKETS_TEST
             << " test packets (" << test_bytes_total << " bytes)\n";
+
+  // Maximum time for the traffic
   std::cout << "  should take at most "
             << (1.0 * (test_bytes_total + cwnd_bytes_total) / bytes_per_sec)
             << " seconds\n";
@@ -122,30 +130,28 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   #ifdef USE_WEB100
 // TCP SPECIFIC
-  TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
-  web100::Connection growth_connection(test_socket);
-  growth_connection.Start();
-  //uint32_t dump_size = static_cast<uint32_t>(3 * target_pipe_size);
-  //ctrl_socket->SendOrDie(mlab::Packet(htonl(dump_size)));
-  std::cout << "start growing phase" << std::endl;
-  while (growth_generator.packets_sent() < MAX_PACKETS_CWND) {
-    growth_connection.Stop();
-    if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
-      std::cout << "cwnd reached" << std::endl;
-      break;
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
+    web100::Connection growth_connection(test_socket);
+    growth_connection.Start();
+    std::cout << "start growing phase" << std::endl;
+    while (growth_generator.packets_sent() < MAX_PACKETS_CWND) {
+      growth_connection.Stop();
+      if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
+        std::cout << "cwnd reached" << std::endl;
+        break;
+      }
+      growth_generator.send(target_pipe_size);
+      NanoSleepX( config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
+                  config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
     }
-    growth_generator.send(target_pipe_size);
-    struct timespec sleep_req = { config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
-                                  config.rtt_ms * 1000 * 1000 % NS_PER_SEC };
-    struct timespec sleep_rem;
-    nanosleep(&sleep_req, &sleep_rem);
-  }
-  std::cout << "growing phase done" << std::endl;
+    std::cout << "growing phase done" << std::endl;
 
-  while (growth_connection.SndNxt() - growth_connection.SndUna()
-          >= target_pipe_size_bytes / 2) {
+    while (growth_connection.SndNxt() - growth_connection.SndUna()
+            >= target_pipe_size_bytes / 2) {
+    }
+    std::cout << "done spinning" << std::endl;
   }
-  std::cout << "done spinning" << std::endl;
   #endif
 
 
@@ -153,12 +159,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Start the test
   StatTest tester(target_run_length);
   TrafficGenerator generator(test_socket, bytes_per_chunk, MAX_PACKETS_TEST);
+
+  // TODO: shouldn't initialize web100 connection when test socket is UDP
   #ifdef USE_WEB100
   web100::Connection test_connection(test_socket);
-  test_connection.Start();
+  if (test_socket->type() == SOCKETTYPE_TCP)
+    test_connection.Start();
   #endif
 
-  uint32_t sleep_count = 0;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
 
@@ -166,7 +174,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     generator.send(1);
 
     #ifdef USE_WEB100
-// TCP SPECIFIC
     if (test_socket->type() == SOCKETTYPE_TCP) {
       // sample the data once a second
       if (generator.packets_sent() % chunks_per_sec == 0) {
@@ -190,51 +197,36 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     // figure out the start time for the next chunk
     uint64_t next_start = outer_start_time + (generator.packets_sent() * time_per_chunk_ns);
     uint64_t curr_time = GetTimeNS();
-
-    // If we have time left over, sleep the remainder.
     int32_t left_over_ns = next_start - curr_time;
     if (left_over_ns > 0) {
-      // std::cout << "." << std::flush;
-      struct timespec sleep_req = {left_over_ns / NS_PER_SEC,
-                                   left_over_ns % NS_PER_SEC};
-      struct timespec sleep_rem;
-      int slept = nanosleep(&sleep_req, &sleep_rem);
-      ++sleep_count;
-      while (slept == -1) {
-        assert(errno == EINTR);
-        slept = nanosleep(&sleep_rem, &sleep_rem);
-        ++sleep_count;
-      }
+      // If we have time left over, sleep the remainder.
+      NanoSleepX(left_over_ns / NS_PER_SEC, left_over_ns % NS_PER_SEC);
     } else {
-      // Warning: start time of next chunk has already passed, no sleep
-      // INCONCLUSIVE
+      // INCONCLUSIVE because the time for next chunk is already passed
       std::cout << "failed by " << 1.0 * left_over_ns / NS_PER_SEC
                 << "s to generate traffic" << std::endl;
       break;
     }
   }
-  // notify the client that the test has ended
-  {
-    uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
-    struct timespec sleep_req = { rtt_ns / NS_PER_SEC, rtt_ns % NS_PER_SEC };
-    struct timespec sleep_rem;
-    nanosleep(&sleep_req, &sleep_rem);
-  }
-  ctrl_socket->SendOrDie(mlab::Packet(END));
 
   uint64_t outer_end_time = GetTimeNS();
   uint64_t delta_time = outer_end_time - outer_start_time;
   double delta_time_sec = static_cast<double>(delta_time) / NS_PER_SEC;
 
+  // wait for a rtt, so that end doesn't arrive too early
+  NanoSleepX( config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
+              config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
+  // notify the client that the test has ended
+  ctrl_socket->SendOrDie(mlab::Packet(END));
 
+
+#ifdef USE_WEB100
   // Traffic statistics from web100
   uint32_t lost_packets = 0;
   uint32_t application_write_queue = 0;
   uint32_t retransmit_queue = 0;
   double rtt_sec = 0.0;
 
-#ifdef USE_WEB100
-// TCP SPECIFIC
   if (test_socket->type() == SOCKETTYPE_TCP) {
     test_connection.Stop();
     lost_packets = test_connection.PacketRetransCount();
@@ -277,7 +269,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
 
 
-  std::cout << "\nPackets sent: " << generator.packets_sent() << "\n";
+  std::cout << "\npackets sent: " << generator.packets_sent() << "\n";
   std::cout << "bytes sent: " << generator.total_bytes_sent() << "\n";
   std::cout << "time: " << delta_time_sec << "\n";
   std::cout << "send rate: " << send_rate << " b/sec ("
@@ -285,29 +277,30 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // std::cout << "recv rate: " << recv_rate << " b/sec ("
             // << recv_rate_delta_percent << "% of target)\n";
 
-// TCP SPECIFIC
-  std::cout << "  lost: " << lost_packets << "\n";
-  std::cout << "  write queue: " << application_write_queue << "\n";
-  std::cout << "  retransmit queue: " << retransmit_queue << "\n";
-  std::cout << "  rtt: " << rtt_sec << "\n";
-  std::cout << "  sent: " << generator.packets_sent() << "\n";
-  std::cout << "  slept: " << sleep_count << "\n";
+#ifdef USE_WEB100
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    std::cout << "  lost: " << lost_packets << "\n";
+    std::cout << "  write queue: " << application_write_queue << "\n";
+    std::cout << "  retransmit queue: " << retransmit_queue << "\n";
+    std::cout << "  rtt: " << rtt_sec << "\n";
 
-  if (rtt_sec > 0.0) {
-    if ((application_write_queue + retransmit_queue) / rtt_sec <
-        bytes_per_sec) {
-      std::cout << "  kept up\n";
-    } else {
-      std::cout << "  failed to keep up\n";
+    if (rtt_sec > 0.0) {
+      if ((application_write_queue + retransmit_queue) / rtt_sec <
+          bytes_per_sec) {
+        std::cout << "  kept up\n";
+      } else {
+        std::cout << "  failed to keep up\n";
+      }
     }
   }
+#endif
 
   std::ofstream fs;
   fs.open("/home/mlab_pipeline/mbm_fork/test.txt");
-  fs << "seq_no " << "nonce " << "pkt_size " << "timestamp " << std::endl;
+  fs << "seq_no " << "nonce " << "timestamp " << std::endl;
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {
-    fs << it->seq_no() << ' ' << it->nonce() << ' '
+    fs << it->seq_no() << ' ' << it->nonce()
        << ' ' << it->timestamp() << std::endl;
   }
   fs.close();
