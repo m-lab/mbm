@@ -69,6 +69,16 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   scoped_ptr<mlab::ClientSocket> ctrl_socket(
       mlab::ClientSocket::CreateOrDie(server, FLAGS_port));
 
+  // set timeout for control socket
+  int set_result;
+  timeval timeout = {5, 0};
+  set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                          (const char*) &timeout, sizeof(timeout));
+  assert(set_result != -1);
+  set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
+                          (const char*) &timeout, sizeof(timeout));
+  assert(set_result != -1);
+
   std::cout << "Sending config\n";
   const Config config(socket_type, rate, rtt, mss);
   ctrl_socket->SendOrDie(mlab::Packet(config));
@@ -84,9 +94,33 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   std::cout << "Sending READY\n";
   ctrl_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
-  // TODO: There may need to be a 'wait for ready-ack' loop if mbm_socket is UDP
-  // and loss is high.
-  mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
+
+  // set timeout for test socket
+  set_result = setsockopt(mbm_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                          (const char*) &timeout, sizeof(timeout));
+  assert(set_result != -1);
+  set_result = setsockopt(mbm_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
+                          (const char*) &timeout, sizeof(timeout));
+  assert(set_result != -1);
+
+  // set timeout to be 3 times rtt for the ready-ack loop
+  timeval temp_timeout = {3 * rtt / 1000, (3 * rtt % 1000) * 1000};
+  set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                          (const char*) &temp_timeout,
+                          sizeof(temp_timeout));
+  assert(set_result != -1);
+  // send ready on the test channel and wait for ready on the ctrl channel
+  ssize_t num_bytes;
+  for(int count = 0; count < 5; ++count) {
+    mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
+    if (ctrl_socket->Receive(strlen(READY), &num_bytes).str() == READY)
+      break;
+    // if failed to receive ready with loop, terminate the test
+    assert(count <= 4);
+  } 
+  assert(setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                    (const char*) &timeout, sizeof(timeout))
+                    != -1);
 
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
@@ -94,7 +128,11 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   ssize_t bytes_read;
   const uint32_t chunk_len = ntohl(
       ctrl_socket->ReceiveX(sizeof(chunk_len), &bytes_read).as<uint32_t>());
-
+  if (bytes_read < 0 || static_cast<unsigned>(bytes_read) < sizeof(chunk_len)) {
+    std::cerr << "Something went wrong. The server might have died: "
+              << strerror(errno) << "\n";
+    return RESULT_ERROR;
+  }
 
   // test traffic
   std::vector<TrafficData> data_collected;
@@ -125,7 +163,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
       uint32_t nonce = ntohl(*reinterpret_cast<const uint32_t*>(&recv.buffer()[4]));
       data_collected.push_back(TrafficData(seq_no, nonce, timestamp));
 
-      if (recv.length() == 0) {
+      if (recv.length() < chunk_len) {
         std::cerr << "Something went wrong. The server might have died: "
                   << strerror(errno) << "\n";
         return RESULT_ERROR;
@@ -165,6 +203,12 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   std::cout << "Receiving test result" << std::endl;
   Result result;
   mlab::Packet result_pkt = ctrl_socket->ReceiveX(sizeof(result), &bytes_read);
+  if (bytes_read < 0 || static_cast<unsigned>(bytes_read) < sizeof(result)) {
+    std::cerr << "Something went wrong. The server might have died: "
+              << strerror(errno) << "\n";
+    return RESULT_ERROR;
+  }
+
   result = static_cast<Result>(ntohl(result_pkt.as<Result>()));
   std::cout << (socket_type == SOCKETTYPE_TCP ? "tcp" : "udp") << " @ " << rate
             << ": " << kResultStr[result] << "\n";

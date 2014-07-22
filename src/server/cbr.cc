@@ -115,8 +115,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
             << (1.0 * (test_bytes_total + cwnd_bytes_total) / bytes_per_sec)
             << " seconds\n";
 
-
-
   // Model Computation
   uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
                                                       config.rtt_ms,
@@ -126,10 +124,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
                                                         config.mss_bytes);
   uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
 
-
-
   #ifdef USE_WEB100
-// TCP SPECIFIC
   if (test_socket->type() == SOCKETTYPE_TCP) {
     TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
     web100::Connection growth_connection(test_socket);
@@ -154,13 +149,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
   #endif
 
-
-
   // Start the test
   StatTest tester(target_run_length);
   TrafficGenerator generator(test_socket, bytes_per_chunk, MAX_PACKETS_TEST);
 
-  // TODO: shouldn't initialize web100 connection when test socket is UDP
   #ifdef USE_WEB100
   web100::Connection test_connection(test_socket);
   if (test_socket->type() == SOCKETTYPE_TCP)
@@ -181,7 +173,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         test_connection.Stop();
         uint32_t loss = test_connection.PacketRetransCount();
         uint32_t n = generator.packets_sent();
-
         test_result = tester.test_result(n, loss);
         if (test_result == RESULT_PASS) {
           std::cout << "passed SPRT" << std::endl;
@@ -218,7 +209,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
               config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
   // notify the client that the test has ended
   ctrl_socket->SendOrDie(mlab::Packet(END));
-
 
   uint32_t lost_packets = 0;
 #ifdef USE_WEB100
@@ -296,8 +286,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     std::cout << "  lost: " << lost_packets << "\n";
   }
 
+  // Log the data to a file, under construction...
   std::ofstream fs;
-  fs.open("/home/mlab_pipeline/mbm_fork/test.txt");
+  fs.open("test.txt");
   fs << "seq_no " << "nonce " << "timestamp " << std::endl;
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {
@@ -308,8 +299,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   std::cout << "Done CBR" << std::endl;
   if (test_socket->type() == SOCKETTYPE_TCP)
-    return test_result;
-  else return tester.test_result(generator.packets_sent(), lost_packets);
+    test_result = tester.test_result(generator.packets_sent(), lost_packets);
+
+  return test_result;
 }
 
 }  // namespace mbm

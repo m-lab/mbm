@@ -80,41 +80,91 @@ void* ServerThread(void* server_config_data) {
   used_port[available_port] = true;
   pthread_mutex_unlock(&used_port_mutex);
 
-  const uint16_t port = available_port + BASE_PORT;
+  uint16_t port = available_port + BASE_PORT;
 
   {
     const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
+    // set send and receive timeout for ctrl socket
+    timeval timeout = {5, 0};
+    if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                   (const char*) &timeout, sizeof(timeout))
+        != -1) {
+        // TODO: handle error
+    }
+    if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
+                   (const char*) &timeout, sizeof(timeout))
+        != -1) {
+        // TODO: handle error
+    }
 
     std::cout << "Getting config\n";
-    const Config config =
-        ctrl_socket->ReceiveOrDie(sizeof(Config)).as<Config>();
+    ssize_t num_bytes;
+    mlab::Packet config_buff = ctrl_socket->Receive(sizeof(Config), &num_bytes);
+    if (num_bytes < 0) {
+      // TODO: handle error
+    }
+    const Config config = config_buff.as<Config>();
 
     std::cout << "Setting config [" << config.socket_type << " | "
               << config.cbr_kb_s << " kb/s | " << config.rtt_ms << " ms | "
               << config.mss_bytes << " bytes" << " ]\n";
 
 
-    // TODO: Consider not dying but picking a different port.
-    scoped_ptr<mlab::ListenSocket> mbm_socket(mlab::ListenSocket::CreateOrDie(
-        port, config.socket_type));
+    // create listen socket, if error occurs pick another port
+    // if error occurs more than 3 times terminate the test
+    mlab::ListenSocket* listen_socket = NULL;
+    for (int count = 0; count < 3; ++count) {
+      listen_socket = mlab::ListenSocket::Create(port, config.socket_type);
+      if (listen_socket) break;
+
+      uint16_t current = available_port;
+      pthread_mutex_lock(&used_port_mutex);
+      available_port = GetAvailablePort();
+      used_port[current] = false;
+      used_port[available_port] = true;
+      pthread_mutex_unlock(&used_port_mutex);
+      port = available_port + BASE_PORT;
+    }
+    if (!listen_socket) {
+      // TODO:handle error
+    }
+    scoped_ptr<mlab::ListenSocket> mbm_socket(listen_socket);
 
     std::cout << "Listening on " << port << "\n";
 
     // Let the client know that they can connect.
     std::cout << "Telling client to connect on port " << port << "\n";
-    ctrl_socket->SendOrDie(mlab::Packet(htons(port)));
+    if (!ctrl_socket->Send(mlab::Packet(htons(port)), &num_bytes)) {
+      // TODO: handle error
+    }
 
-    mbm_socket->Select();
-    scoped_ptr<mlab::AcceptedSocket> test_socket(mbm_socket->Accept());
+    mlab::AcceptedSocket* test_socket_buff = mbm_socket->Accept();
+    if (!test_socket_buff) {
+      // TODO: handle error
+    }
+
+    scoped_ptr<mlab::AcceptedSocket> test_socket(test_socket_buff);
+    if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                   (const char*) &timeout, sizeof(timeout))
+        != -1) {
+        // TODO: handle error
+    }
+    if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
+                   (const char*) &timeout, sizeof(timeout))
+        != -1) {
+        // TODO: handle error
+    }
 
     std::cout << "Waiting for READY\n";
-    // TODO(dominic): This may need to become a while loop if test_socket is UDP
-    // and loss is high.
-    std::string ctrl_ready = ctrl_socket->ReceiveOrDie(strlen(READY)).str();
-    std::string test_ready = test_socket->ReceiveOrDie(strlen(READY)).str();
-    assert(ctrl_ready == READY);
-    assert(test == READY);
-
+    std::string ctrl_ready = ctrl_socket->Receive(strlen(READY), &num_bytes).str();
+    std::string test_ready = test_socket->Receive(strlen(READY), &num_bytes).str();
+    if (ctrl_ready != READY || test_ready != READY) {
+      // TODO: handle error
+    }
+    if (!ctrl_socket->Send(mlab::Packet(READY, strlen(READY)), &num_bytes)) {
+      // TODO: handle error
+    }
+    
     Result result = RunCBR(test_socket.get(),
                            ctrl_socket,
                            config);
@@ -123,8 +173,10 @@ void* ServerThread(void* server_config_data) {
     else
       std::cout << kResultStr[result] << "\n";
 
-    ctrl_socket->SendOrDie(mlab::Packet(htonl(result)));
-  }
+    if (!ctrl_socket->Send(mlab::Packet(htonl(result)), &num_bytes)) {
+      // TODO: handle error
+    }
+  } 
 
   pthread_mutex_lock(&used_port_mutex);
   used_port[available_port] = false;
@@ -156,11 +208,13 @@ int main(int argc, char* argv[]) {
 
   scoped_ptr<mlab::ListenSocket> socket(
       mlab::ListenSocket::CreateOrDie(FLAGS_port));
+  std::cout << "Listening on port " << FLAGS_port << std::endl;
 
   while (true) {
     socket->Select();
     std::cout << "New connection\n";
     const mlab::AcceptedSocket* ctrl_socket(socket->Accept());
+    if (!ctrl_socket) continue;
 
     ServerConfig* server_config =
         new ServerConfig(ctrl_socket);
