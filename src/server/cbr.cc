@@ -167,6 +167,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     test_connection.Start();
   #endif
 
+  bool result_is_set = false;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
 
@@ -186,9 +187,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         test_result = tester.test_result(n, loss);
         if (test_result == RESULT_PASS) {
           std::cout << "passed SPRT" << std::endl;
+          result_is_set = true;
           break;
         } else if (test_result == RESULT_FAIL) {
           std::cout << "failed SPRT" << std::endl;
+          result_is_set = true;
           break;
         }
        }
@@ -206,6 +209,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       // INCONCLUSIVE because the time for next chunk is already passed
       std::cout << "failed by " << 1.0 * left_over_ns / NS_PER_SEC
                 << "s to generate traffic" << std::endl;
+      result_is_set = true;
       break;
     }
   }
@@ -247,7 +251,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     ctrl_socket->Receive(sizeof(data_size_obj), &num_bytes);
   if (num_bytes < 0 || static_cast<unsigned>(num_bytes) < sizeof(data_size_obj))
     return RESULT_ERROR;
-  std::cout << data_size_pkt.length() << std::endl;
   data_size_obj = ntohl(data_size_pkt.as<uint32_t>());
 
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
@@ -316,7 +319,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   fs.close();
 
   std::cout << "Done CBR" << std::endl;
-  if (test_socket->type() == SOCKETTYPE_TCP)
+  if (test_socket->type() == SOCKETTYPE_UDP && !result_is_set)
     test_result = tester.test_result(generator.packets_sent(), lost_packets);
 
   return test_result;
