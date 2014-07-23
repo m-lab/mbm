@@ -10,6 +10,7 @@
 #include <netinet/tcp.h>
 #include <string.h>
 #include <math.h>
+#include <signal.h>
 
 #include <iostream>
 #include <fstream>
@@ -40,6 +41,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout.setf(std::ios_base::fixed);
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
+
+  // Ignore SIGPIPE
+  signal(SIGPIPE, SIG_IGN);
 
   uint32_t tcp_mss = config.mss_bytes;
   socklen_t mss_len = sizeof(tcp_mss);
@@ -80,7 +84,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   if (test_socket->type() == SOCKETTYPE_TCP) {
     bytes_per_chunk = std::min(config.mss_bytes, tcp_mss);
   }
-  ctrl_socket->SendOrDie(mlab::Packet(htonl(bytes_per_chunk)));
+  ssize_t num_bytes;
+  if (!ctrl_socket->Send(mlab::Packet(htonl(bytes_per_chunk)), &num_bytes))
+    return RESULT_ERROR;
 
   // calculate how many chunks per second we want to send
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
@@ -136,7 +142,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         std::cout << "cwnd reached" << std::endl;
         break;
       }
-      growth_generator.send(target_pipe_size);
+      if (!growth_generator.Send(target_pipe_size)) {
+        return RESULT_ERROR;
+      }
       NanoSleepX( config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
                   config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
     }
@@ -163,7 +171,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t outer_start_time = GetTimeNS();
 
   while (generator.packets_sent() < MAX_PACKETS_TEST) {
-    generator.send(1);
+    if (!generator.Send(1)) {
+      return RESULT_ERROR;
+    }
 
     #ifdef USE_WEB100
     if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -208,7 +218,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   NanoSleepX( config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
               config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
   // notify the client that the test has ended
-  ctrl_socket->SendOrDie(mlab::Packet(END));
+  if (!ctrl_socket->Send(mlab::Packet(END), &num_bytes))
+    return RESULT_ERROR;
 
   uint32_t lost_packets = 0;
 #ifdef USE_WEB100
@@ -231,8 +242,14 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double send_rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
 
   // Receive the data collected by the client
-  uint32_t data_size_obj = 
-    ntohl(ctrl_socket->ReceiveOrDie(sizeof(data_size_obj)).as<uint32_t>());
+  uint32_t data_size_obj;
+  mlab::Packet data_size_pkt =
+    ctrl_socket->Receive(sizeof(data_size_obj), &num_bytes);
+  if (num_bytes < 0 || static_cast<unsigned>(num_bytes) < sizeof(data_size_obj))
+    return RESULT_ERROR;
+  std::cout << data_size_pkt.length() << std::endl;
+  data_size_obj = ntohl(data_size_pkt.as<uint32_t>());
+
   uint32_t data_size_bytes = data_size_obj * sizeof(TrafficData);
   std::cout << "client data: " << data_size_bytes << " bytes" << std::endl;
 
@@ -241,12 +258,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t total_recv_bytes = 0;
   while (total_recv_bytes < data_size_bytes) {
     mlab::Packet recv_pkt =
-      ctrl_socket->ReceiveOrDie(data_size_bytes - total_recv_bytes);
-    uint32_t recv_bytes = recv_pkt.length();
+      ctrl_socket->Receive(data_size_bytes - total_recv_bytes, &num_bytes);
+    if (num_bytes < 0)
+      return RESULT_ERROR;
     bytes_buffer.insert(bytes_buffer.end(),
                         recv_pkt.buffer(),
-                        recv_pkt.buffer() + recv_bytes);
-    total_recv_bytes += recv_bytes;
+                        recv_pkt.buffer() + num_bytes);
+    total_recv_bytes += num_bytes;
   }
   const TrafficData* recv_buffer =
       reinterpret_cast<const TrafficData*>(&bytes_buffer[0]);

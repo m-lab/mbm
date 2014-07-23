@@ -22,31 +22,34 @@ TrafficGenerator::TrafficGenerator(const mlab::AcceptedSocket *test_socket,
                                    uint32_t bytes_per_chunk, uint32_t max_pkt)
     : test_socket_(test_socket),
       max_packets_(max_pkt),
-      bytes_per_chunk(bytes_per_chunk),
+      bytes_per_chunk_(bytes_per_chunk),
       total_bytes_sent_(0),
       packets_sent_(0),
       last_percent_(0),
       buffer_(std::vector<char>(bytes_per_chunk,'x')) {
 }
-                 
 
-uint32_t TrafficGenerator::send(int num_chunks){
-  uint32_t bytes_sent = 0;
-  for(int i=0; i<num_chunks; ++i){
+bool TrafficGenerator::Send(uint32_t num_chunks, ssize_t& num_bytes){
+  num_bytes = 0;
+  ssize_t local_num_bytes;
+  for(uint32_t i=0; i<num_chunks; ++i){
     uint32_t seq_no = htonl(packets_sent_);
     memcpy(&buffer_[0], &seq_no, sizeof(packets_sent_));
     uint32_t nonce = htonl(rand());
     memcpy(&buffer_[0]+sizeof(packets_sent_), &nonce, sizeof(nonce));
 
 
-    mlab::Packet chunk_packet(&buffer_[0], bytes_per_chunk);
+    mlab::Packet chunk_packet(&buffer_[0], bytes_per_chunk_);
 
-    test_socket_->SendOrDie(chunk_packet);
+    if (!test_socket_->Send(chunk_packet, &local_num_bytes)) {
+      num_bytes = -1;
+      return false;
+    }
 
     nonce_.push_back(ntohl(nonce));
     timestamps_.push_back(GetTimeNS());
 
-    bytes_sent += chunk_packet.length();
+    num_bytes += chunk_packet.length();
     ++packets_sent_;
 
     if (FLAGS_verbose) {
@@ -64,9 +67,14 @@ uint32_t TrafficGenerator::send(int num_chunks){
       }
     }
   } // for loop
-  total_bytes_sent_ += bytes_sent;
+  total_bytes_sent_ += num_bytes;
   
-  return bytes_sent;
+  return (static_cast<unsigned>(num_bytes) == num_chunks * bytes_per_chunk_);
+}
+
+bool TrafficGenerator::Send(uint32_t num_chunks) {
+  ssize_t num_bytes;
+  return Send(num_chunks, num_bytes);
 }
 
 uint32_t TrafficGenerator::packets_sent(){
@@ -75,6 +83,10 @@ uint32_t TrafficGenerator::packets_sent(){
 
 uint32_t TrafficGenerator::total_bytes_sent(){
   return total_bytes_sent_;
+}
+
+uint32_t TrafficGenerator::bytes_per_chunk(){
+  return bytes_per_chunk_;
 }
 
 } // namespace mbm

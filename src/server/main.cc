@@ -82,26 +82,29 @@ void* ServerThread(void* server_config_data) {
 
   uint16_t port = available_port + BASE_PORT;
 
-  {
+  do {
     const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
     // set send and receive timeout for ctrl socket
     timeval timeout = {5, 0};
     if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
-        != -1) {
-        // TODO: handle error
+        == -1) {
+      // TODO: handle error
+      break;
     }
     if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
-        != -1) {
-        // TODO: handle error
+        == -1) {
+      // TODO: handle error
+      break;
     }
 
     std::cout << "Getting config\n";
     ssize_t num_bytes;
     mlab::Packet config_buff = ctrl_socket->Receive(sizeof(Config), &num_bytes);
-    if (num_bytes < 0) {
+    if (num_bytes < 0 || static_cast<unsigned>(num_bytes) < sizeof(Config) ) {
       // TODO: handle error
+      break;
     }
     const Config config = config_buff.as<Config>();
 
@@ -127,6 +130,7 @@ void* ServerThread(void* server_config_data) {
     }
     if (!listen_socket) {
       // TODO:handle error
+      break;
     }
     scoped_ptr<mlab::ListenSocket> mbm_socket(listen_socket);
 
@@ -136,23 +140,27 @@ void* ServerThread(void* server_config_data) {
     std::cout << "Telling client to connect on port " << port << "\n";
     if (!ctrl_socket->Send(mlab::Packet(htons(port)), &num_bytes)) {
       // TODO: handle error
+      break;
     }
 
     mlab::AcceptedSocket* test_socket_buff = mbm_socket->Accept();
     if (!test_socket_buff) {
       // TODO: handle error
+      break;
     }
 
     scoped_ptr<mlab::AcceptedSocket> test_socket(test_socket_buff);
     if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
-        != -1) {
-        // TODO: handle error
+        == -1) {
+      // TODO: handle error
+      break;
     }
     if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
-        != -1) {
-        // TODO: handle error
+        == -1) {
+      // TODO: handle error
+      break;
     }
 
     std::cout << "Waiting for READY\n";
@@ -160,9 +168,11 @@ void* ServerThread(void* server_config_data) {
     std::string test_ready = test_socket->Receive(strlen(READY), &num_bytes).str();
     if (ctrl_ready != READY || test_ready != READY) {
       // TODO: handle error
+      break;
     }
     if (!ctrl_socket->Send(mlab::Packet(READY, strlen(READY)), &num_bytes)) {
       // TODO: handle error
+      break;
     }
     
     Result result = RunCBR(test_socket.get(),
@@ -175,8 +185,9 @@ void* ServerThread(void* server_config_data) {
 
     if (!ctrl_socket->Send(mlab::Packet(htonl(result)), &num_bytes)) {
       // TODO: handle error
+      break;
     }
-  } 
+  } while(false);
 
   pthread_mutex_lock(&used_port_mutex);
   used_port[available_port] = false;
