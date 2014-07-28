@@ -13,7 +13,9 @@
 #include <signal.h>
 
 #include <iostream>
+#include <sstream>
 #include <fstream>
+#include <iomanip>
 
 #include "common/config.h"
 #include "common/constants.h"
@@ -92,7 +94,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
 
   // calculate how many ns per chunk
-  uint32_t time_per_chunk_ns = NS_PER_SEC / chunks_per_sec;
+  uint64_t time_per_chunk_ns = NS_PER_SEC / chunks_per_sec;
 
   // calculate how many sec per chunk
   double time_per_chunk_sec = 1.0 / chunks_per_sec;
@@ -129,6 +131,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
                                                         config.rtt_ms,
                                                         config.mss_bytes);
   uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
+  uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
 
   #ifdef USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -145,8 +148,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       if (!growth_generator.Send(target_pipe_size)) {
         return RESULT_ERROR;
       }
-      NanoSleepX( config.rtt_ms * 1000 * 1000 / NS_PER_SEC,
-                  config.rtt_ms * 1000 * 1000 % NS_PER_SEC);
+      NanoSleepX( rtt_ns / NS_PER_SEC, rtt_ns % NS_PER_SEC);
     }
     std::cout << "growing phase done" << std::endl;
 
@@ -170,6 +172,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   bool result_is_set = false;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
+  uint64_t missed_total = 0;
+  uint64_t missed_max = 0;
+  uint32_t missed_sleep = 0;
 
   while (generator.packets_sent() < MAX_PACKETS_TEST) {
     if (!generator.Send(1)) {
@@ -194,23 +199,21 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
           result_is_set = true;
           break;
         }
-       }
+      }
     }
     #endif
     
     // figure out the start time for the next chunk
-    uint64_t next_start = outer_start_time + (generator.packets_sent() * time_per_chunk_ns);
+    uint64_t next_start = outer_start_time + (generator.packets_sent() + 0) * time_per_chunk_ns;
     uint64_t curr_time = GetTimeNS();
     int32_t left_over_ns = next_start - curr_time;
     if (left_over_ns > 0) {
       // If we have time left over, sleep the remainder.
       NanoSleepX(left_over_ns / NS_PER_SEC, left_over_ns % NS_PER_SEC);
     } else {
-      // INCONCLUSIVE because the time for next chunk is already passed
-      std::cout << "failed by " << 1.0 * left_over_ns / NS_PER_SEC
-                << "s to generate traffic" << std::endl;
-      result_is_set = true;
-      break;
+      missed_total += abs(left_over_ns);
+      missed_sleep++;
+      missed_max = std::max(missed_max, static_cast<uint64_t>(abs(left_over_ns)));
     }
   }
 
@@ -244,6 +247,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Observed data rates
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
   double send_rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
+
+  // std::cout << "time" << std::endl;
+  std::cout << "Sleep missed" << std::endl;
+  std::cout << "maximum: " << missed_max << std::endl;
+  std::cout << "average: " << (missed_sleep == 0? 0 : missed_total / missed_sleep) << std::endl;
+  std::cout << "count: " << missed_sleep << std::endl;
 
   // Receive the data collected by the client
   uint32_t data_size_obj;
@@ -307,9 +316,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     std::cout << "  lost: " << lost_packets << "\n";
   }
 
-  // Log the data to a file, under construction...
+  // generate the log-file name
+  std::stringstream file_name;
+  std::string file_name_prefix = GetTestTimeStr();
+  file_name << file_name_prefix << "_test.txt";
+  std::cout << file_name.str() << std::endl;
+
+  // Log the data to a file
   std::ofstream fs;
-  fs.open("test.txt");
+  fs.open(file_name.str().c_str());
   fs << "seq_no " << "nonce " << "timestamp " << std::endl;
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {

@@ -3,6 +3,9 @@
 #include <time.h>
 #include <assert.h>
 
+#include <iostream>
+#include <sstream>
+
 #include "common/constants.h"
 
 namespace mbm {
@@ -15,6 +18,17 @@ uint64_t GetTimeNS() {
   clock_gettime(CLOCK_MONOTONIC_RAW, &time);
 #endif
   return static_cast<uint64_t>(time.tv_sec) * NS_PER_SEC + time.tv_nsec;
+}
+
+std::string GetTestTimeStr() {
+  struct timespec time;
+  clock_gettime(CLOCK_REALTIME, &time);
+  struct tm* time_tm = gmtime(&time.tv_sec);
+  char buffer[200];
+  strftime(buffer, 200, "%Y/%m/%d/%Y%m%dT%T.", time_tm);
+  std::stringstream ss;
+  ss << buffer << time.tv_nsec << 'Z';
+  return ss.str();
 }
 
 void NanoSleepX(uint64_t sec, uint64_t ns) {
