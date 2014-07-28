@@ -89,13 +89,13 @@ void* ServerThread(void* server_config_data) {
     if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
         == -1) {
-      // TODO: handle error
+      std::cout << "failed to set receive timeout" << std::endl;
       break;
     }
     if (setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
         == -1) {
-      // TODO: handle error
+      std::cout << "failed to set send timeout" << std::endl;
       break;
     }
 
@@ -103,7 +103,7 @@ void* ServerThread(void* server_config_data) {
     ssize_t num_bytes;
     mlab::Packet config_buff = ctrl_socket->Receive(sizeof(Config), &num_bytes);
     if (num_bytes < 0 || static_cast<unsigned>(num_bytes) < sizeof(Config) ) {
-      // TODO: handle error
+      std::cout << "failed to receive config" << std::endl;
       break;
     }
     const Config config = config_buff.as<Config>();
@@ -129,7 +129,7 @@ void* ServerThread(void* server_config_data) {
       port = available_port + BASE_PORT;
     }
     if (!listen_socket) {
-      // TODO:handle error
+      std::cout << "failed to create listen socket" << std::endl;
       break;
     }
     scoped_ptr<mlab::ListenSocket> mbm_socket(listen_socket);
@@ -139,13 +139,13 @@ void* ServerThread(void* server_config_data) {
     // Let the client know that they can connect.
     std::cout << "Telling client to connect on port " << port << "\n";
     if (!ctrl_socket->Send(mlab::Packet(htons(port)), &num_bytes)) {
-      // TODO: handle error
+      std::cout << "failed to send port" << std::endl;
       break;
     }
 
     mlab::AcceptedSocket* test_socket_buff = mbm_socket->Accept();
     if (!test_socket_buff) {
-      // TODO: handle error
+      std::cout << "failed to accept test connection" << std::endl;
       break;
     }
 
@@ -153,13 +153,13 @@ void* ServerThread(void* server_config_data) {
     if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
         == -1) {
-      // TODO: handle error
+      std::cout << "failed to set receive timeout" << std::endl;
       break;
     }
     if (setsockopt(test_socket->raw(), SOL_SOCKET, SO_SNDTIMEO, 
                    (const char*) &timeout, sizeof(timeout))
         == -1) {
-      // TODO: handle error
+      std::cout << "failed to set send timeout" << std::endl;
       break;
     }
 
@@ -167,11 +167,11 @@ void* ServerThread(void* server_config_data) {
     std::string ctrl_ready = ctrl_socket->Receive(strlen(READY), &num_bytes).str();
     std::string test_ready = test_socket->Receive(strlen(READY), &num_bytes).str();
     if (ctrl_ready != READY || test_ready != READY) {
-      // TODO: handle error
+      std::cout << "failed to receive ready" << std::endl;
       break;
     }
     if (!ctrl_socket->Send(mlab::Packet(READY, strlen(READY)), &num_bytes)) {
-      // TODO: handle error
+      std::cout << "failed to send ready" << std::endl;
       break;
     }
     
@@ -184,7 +184,7 @@ void* ServerThread(void* server_config_data) {
       std::cout << kResultStr[result] << "\n";
 
     if (!ctrl_socket->Send(mlab::Packet(htonl(result)), &num_bytes)) {
-      // TODO: handle error
+      std::cout << "failed to send result" << std::endl;
       break;
     }
   } while(false);
