@@ -24,8 +24,8 @@ std::string GetTestTimeStr() {
   struct timespec time;
   clock_gettime(CLOCK_REALTIME, &time);
   struct tm* time_tm = gmtime(&time.tv_sec);
-  char buffer[200];
-  strftime(buffer, 200, "%Y/%m/%d/%Y%m%dT%T.", time_tm);
+  char buffer[100];
+  strftime(buffer, 100, "%Y%m%dT%T.", time_tm);
   std::stringstream ss;
   ss << buffer << time.tv_nsec << 'Z';
   return ss.str();

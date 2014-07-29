@@ -44,7 +44,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout.precision(3);
   std::cout << "Running CBR at " << config.cbr_kb_s << " kb/s\n";
 
-  // Ignore SIGPIPE
+  // Ignore SIGPIPE, so that write error would be non-fatal
   signal(SIGPIPE, SIG_IGN);
 
   uint32_t tcp_mss = config.mss_bytes;
@@ -169,7 +169,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     test_connection.Start();
   #endif
 
-  bool result_is_set = false;
   Result test_result = RESULT_INCONCLUSIVE;
   uint64_t outer_start_time = GetTimeNS();
   uint64_t missed_total = 0;
@@ -192,11 +191,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         test_result = tester.test_result(n, loss);
         if (test_result == RESULT_PASS) {
           std::cout << "passed SPRT" << std::endl;
-          result_is_set = true;
           break;
         } else if (test_result == RESULT_FAIL) {
           std::cout << "failed SPRT" << std::endl;
-          result_is_set = true;
           break;
         }
       }
@@ -248,7 +245,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
   double send_rate_delta_percent = (send_rate * 100) / (bytes_per_sec * 8);
 
-  // std::cout << "time" << std::endl;
+  // Sleep statistics
   std::cout << "Sleep missed" << std::endl;
   std::cout << "maximum: " << missed_max << std::endl;
   std::cout << "average: " << (missed_sleep == 0? 0 : missed_total / missed_sleep) << std::endl;
@@ -316,15 +313,22 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     std::cout << "  lost: " << lost_packets << "\n";
   }
 
-  // generate the log-file name
-  std::stringstream file_name;
-  std::string file_name_prefix = GetTestTimeStr();
-  file_name << file_name_prefix << "_test.txt";
-  std::cout << file_name.str() << std::endl;
+  // determine the result of the test
+  if (test_socket->type() == SOCKETTYPE_UDP)
+    test_result = tester.test_result(generator.packets_sent(), lost_packets);
 
-  // Log the data to a file
+  if (missed_total > delta_time / 2) {
+    // Inconclusive because the test failed to generate the traffic pattern
+    test_result = RESULT_INCONCLUSIVE;
+  }
+
+  // generate the log-file name
+  std::string file_name_prefix = GetTestTimeStr();
+  std::string file_name = file_name_prefix + "_clientdata.txt";
+
+  // Log the client data to a file
   std::ofstream fs;
-  fs.open(file_name.str().c_str());
+  fs.open(file_name.c_str());
   fs << "seq_no " << "nonce " << "timestamp " << std::endl;
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {
@@ -333,10 +337,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
   fs.close();
 
-  std::cout << "Done CBR" << std::endl;
-  if (test_socket->type() == SOCKETTYPE_UDP && !result_is_set)
-    test_result = tester.test_result(generator.packets_sent(), lost_packets);
 
+  
+  std::cout << "Done CBR" << std::endl;
   return test_result;
 }
 

@@ -82,6 +82,7 @@ void* ServerThread(void* server_config_data) {
 
   uint16_t port = available_port + BASE_PORT;
 
+  // control-flow loop, break when error occurs. (exception is probably better)
   do {
     const mlab::AcceptedSocket* ctrl_socket = server_config->ctrl_socket;
     // set send and receive timeout for ctrl socket
