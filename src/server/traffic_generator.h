@@ -14,7 +14,7 @@ class TrafficGenerator {
     bool Send(uint32_t num_chunks, ssize_t& num_bytes);
     bool Send(uint32_t num_chunks);
     uint32_t packets_sent();
-    uint32_t total_bytes_sent();
+    uint64_t total_bytes_sent();
     uint32_t bytes_per_chunk();
     const std::vector<uint32_t>& nonce();
     const std::vector<uint64_t>& timestamps();
@@ -23,7 +23,7 @@ class TrafficGenerator {
     const mlab::AcceptedSocket *test_socket_;
     uint32_t max_packets_;
     uint32_t bytes_per_chunk_;
-    uint32_t total_bytes_sent_;
+    uint64_t total_bytes_sent_;
     uint32_t packets_sent_;
     uint32_t last_percent_;
     std::vector<char> buffer_;

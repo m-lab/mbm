@@ -81,7 +81,7 @@ uint32_t TrafficGenerator::packets_sent(){
   return packets_sent_;
 }
 
-uint32_t TrafficGenerator::total_bytes_sent(){
+uint64_t TrafficGenerator::total_bytes_sent(){
   return total_bytes_sent_;
 }
 

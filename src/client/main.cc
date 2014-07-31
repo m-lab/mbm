@@ -137,10 +137,10 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   // test traffic
   std::vector<TrafficData> data_collected;
 
-  std::cout << "expecting at most " <<  MAX_PACKETS_CWND
-            << " packets cwnd control traffic\n";
-  std::cout << "expecting at most " <<  MAX_PACKETS_TEST
-            << " packets test traffic\n";
+  // std::cout << "expecting at most " <<  MAX_PACKETS_CWND
+            // << " packets cwnd control traffic\n";
+  // std::cout << "expecting at most " <<  MAX_PACKETS_TEST
+            // << " packets test traffic\n";
 
   fd_set fds; 
   while (true) {
@@ -196,8 +196,14 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   }
 
   std::cout << "Sending collected data..." << std::endl;
-  ctrl_socket->SendOrDie( mlab::Packet(
-      reinterpret_cast<const char*>(&send_buffer[0]), data_size_bytes));
+  uint32_t offset = 0;
+  while (offset < data_size_bytes) {
+    ctrl_socket->Send(
+      mlab::Packet(reinterpret_cast<const char*>(&send_buffer[offset]),
+                   data_size_bytes - offset),
+      &num_bytes);
+    offset += num_bytes; 
+  }
 
 
   std::cout << "Receiving test result" << std::endl;

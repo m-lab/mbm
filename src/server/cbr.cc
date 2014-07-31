@@ -100,8 +100,16 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double time_per_chunk_sec = 1.0 / chunks_per_sec;
 
   // calculate the burst size for sleep time to be greater than 500us
-  uint32_t burst_size_pkt = std::max(500000 / time_per_chunk_ns,
+  uint32_t burst_size_pkt = std::max(1000000 / time_per_chunk_ns,
                                      static_cast<uint64_t>(1));
+
+  // calculate the maximum test time
+  uint32_t max_test_time_sec = TEST_BASE_SEC +
+                               TEST_INCR_SEC_PER_MB * config.cbr_kb_s / 1000;
+  uint32_t max_cwnd_time_sec = CWND_BASE_SEC +
+                               CWND_INCR_SEC_PER_MB * config.cbr_kb_s / 1000;
+  uint32_t max_test_pkt = max_test_time_sec * chunks_per_sec;
+  uint32_t max_cwnd_pkt = max_cwnd_time_sec * chunks_per_sec;
 
   // traffic pattern log
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
@@ -114,19 +122,18 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   uint32_t cwnd_bytes_total = 0;
   if (test_socket->type() == SOCKETTYPE_TCP) {
-    cwnd_bytes_total = bytes_per_chunk * MAX_PACKETS_CWND;
-    std::cout << "  sending at most " << MAX_PACKETS_CWND
+    cwnd_bytes_total = bytes_per_chunk * max_cwnd_pkt;
+    std::cout << "  sending at most " << max_cwnd_pkt
               << " packets (" << cwnd_bytes_total << " bytes)"
               << " to grow cwnd" << std::endl;
   }
-  uint32_t test_bytes_total = bytes_per_chunk * MAX_PACKETS_TEST;
-  std::cout << "  sending at most " << MAX_PACKETS_TEST
+  uint32_t test_bytes_total = bytes_per_chunk * max_test_pkt;
+  std::cout << "  sending at most " << max_test_pkt
             << " test packets (" << test_bytes_total << " bytes)\n";
 
   // Maximum time for the traffic
-  std::cout << "  should take at most "
-            << (1.0 * (test_bytes_total + cwnd_bytes_total) / bytes_per_sec)
-            << " seconds\n";
+  std::cout << "  test traffic should take at most "
+            << max_test_time_sec << " seconds\n";
 
   // Model Computation
   uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
@@ -139,12 +146,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
 
   #ifdef USE_WEB100
-  TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
+  TrafficGenerator growth_generator(test_socket, bytes_per_chunk, max_cwnd_pkt);
   if (test_socket->type() == SOCKETTYPE_TCP) {
     web100::Connection growth_connection(test_socket);
     growth_connection.Start();
     std::cout << "start growing phase" << std::endl;
-    while (growth_generator.packets_sent() < MAX_PACKETS_CWND) {
+    while (growth_generator.packets_sent() < max_cwnd_pkt) {
       growth_connection.Stop();
       if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
         std::cout << "cwnd reached" << std::endl;
@@ -166,7 +173,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // Start the test
   StatTest tester(target_run_length);
-  TrafficGenerator generator(test_socket, bytes_per_chunk, MAX_PACKETS_TEST);
+  TrafficGenerator generator(test_socket, bytes_per_chunk, max_test_pkt);
 
   #ifdef USE_WEB100
   web100::Connection test_connection(test_socket);
@@ -180,7 +187,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t missed_max = 0;
   uint32_t missed_sleep = 0;
 
-  while (generator.packets_sent() < MAX_PACKETS_TEST) {
+  while (generator.packets_sent() < max_test_pkt) {
     if (!generator.Send(burst_size_pkt)) {
       return RESULT_ERROR;
     }
@@ -218,6 +225,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       missed_total += abs(left_over_ns);
       missed_sleep++;
       missed_max = std::max(missed_max, static_cast<uint64_t>(abs(left_over_ns)));
+      if (missed_total > (curr_time - outer_start_time) / 2) {
+        // Inconclusive because the test failed to generate the traffic pattern
+        test_result = RESULT_INCONCLUSIVE;
+        break;
+      }
     }
   }
 
@@ -324,10 +336,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   if (test_socket->type() == SOCKETTYPE_UDP)
     test_result = tester.test_result(generator.packets_sent(), lost_packets);
 
-  if (missed_total > delta_time / 2) {
-    // Inconclusive because the test failed to generate the traffic pattern
-    test_result = RESULT_INCONCLUSIVE;
-  }
 
 /*
   // generate the log-file name
