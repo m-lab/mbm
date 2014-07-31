@@ -89,4 +89,13 @@ uint32_t TrafficGenerator::bytes_per_chunk(){
   return bytes_per_chunk_;
 }
 
+
+const std::vector<uint32_t>& TrafficGenerator::nonce() {
+  return nonce_;
+}
+
+const std::vector<uint64_t>& TrafficGenerator::timestamps() {
+  return timestamps_;
+}
+
 } // namespace mbm

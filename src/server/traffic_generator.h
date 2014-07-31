@@ -16,6 +16,8 @@ class TrafficGenerator {
     uint32_t packets_sent();
     uint32_t total_bytes_sent();
     uint32_t bytes_per_chunk();
+    const std::vector<uint32_t>& nonce();
+    const std::vector<uint64_t>& timestamps();
 
   private:
     const mlab::AcceptedSocket *test_socket_;

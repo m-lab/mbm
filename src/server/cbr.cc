@@ -99,6 +99,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // calculate how many sec per chunk
   double time_per_chunk_sec = 1.0 / chunks_per_sec;
 
+  // calculate the burst size for sleep time to be greater than 500us
+  uint32_t burst_size_pkt = std::max(500000 / time_per_chunk_ns,
+                                     static_cast<uint64_t>(1));
+
   // traffic pattern log
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
   std::cout << "  bytes_per_sec: " << bytes_per_sec << "\n";
@@ -106,6 +110,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  chunks_per_sec: " << chunks_per_sec << "\n";
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
   std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
+  std::cout << "  burst_size_pkt: " << burst_size_pkt << "\n";
 
   uint32_t cwnd_bytes_total = 0;
   if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -134,8 +139,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
 
   #ifdef USE_WEB100
+  TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
   if (test_socket->type() == SOCKETTYPE_TCP) {
-    TrafficGenerator growth_generator(test_socket, bytes_per_chunk, MAX_PACKETS_CWND);
     web100::Connection growth_connection(test_socket);
     growth_connection.Start();
     std::cout << "start growing phase" << std::endl;
@@ -176,7 +181,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t missed_sleep = 0;
 
   while (generator.packets_sent() < MAX_PACKETS_TEST) {
-    if (!generator.Send(1)) {
+    if (!generator.Send(burst_size_pkt)) {
       return RESULT_ERROR;
     }
 
@@ -201,7 +206,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     #endif
     
     // figure out the start time for the next chunk
-    uint64_t next_start = outer_start_time + (generator.packets_sent() + 0) * time_per_chunk_ns;
+    uint64_t next_start = outer_start_time +
+                          (generator.packets_sent() + burst_size_pkt) *
+                          time_per_chunk_ns;
     uint64_t curr_time = GetTimeNS();
     int32_t left_over_ns = next_start - curr_time;
     if (left_over_ns > 0) {
@@ -322,22 +329,68 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     test_result = RESULT_INCONCLUSIVE;
   }
 
+/*
   // generate the log-file name
   std::string file_name_prefix = GetTestTimeStr();
-  std::string file_name = file_name_prefix + "_clientdata.txt";
 
-  // Log the client data to a file
-  std::ofstream fs;
-  fs.open(file_name.c_str());
-  fs << "seq_no " << "nonce " << "timestamp " << std::endl;
+  // log the test configuration and summary data
+  std::ofstream fs_test;
+  fs_test.open((file_name_prefix + "_testdata").c_str());
+  fs_test << "socket_type "
+          << (test_socket->type() == SOCKETTYPE_TCP? "tcp": "udp") << std::endl;
+  fs_test << "target_rate_kb_s " << config.cbr_kb_s << std::endl;
+  fs_test << "target_rtt_ms " << config.rtt_ms << std::endl;
+  fs_test << "target_mss_byytes " << config.mss_bytes << std::endl;
+  fs_test << "target_pipe_size_pkt " << target_pipe_size << std::endl;
+  fs_test << "target_runlength_pkt " << target_run_length << std::endl;
+  fs_test << "packet_size " << bytes_per_chunk << std::endl;
+  fs_test << "packets_per_sec " << time_per_chunk_sec << std::endl;
+  fs_test << "packets_sent " << generator.packets_sent() << std::endl;
+  fs_test << "bytes_sent " << generator.total_bytes_sent() << std::endl;
+  fs_test << "total_time_sec " << delta_time_sec << std::endl;
+  fs_test << "send_rate_bits_sec " << send_rate << std::endl;
+  fs_test << "missed_sleep_count " << missed_sleep << std::endl;
+  fs_test << "missed_sleep_maximum_ns " << missed_max << std::endl;
+  fs_test << "missed_sleep_average_ns "
+          << (missed_sleep == 0? 0 : missed_total / missed_sleep) << std::endl;
+  fs_test << "packet_loss " << lost_packets << std::endl;
+  #if USE_WEB100
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    fs_test << "write_queue " << application_write_queue << std::endl;
+    fs_test << "retransmit_queue " << retransmit_queue << std::endl;
+    fs_test << "sample_rtt_sec " << rtt_sec << std::endl;
+  }
+  #endif
+  fs_test << "test_result " << kResultStr[test_result] << std::endl;
+  fs_test.close();
+  // log the client data
+  std::ofstream fs_client;
+  fs_client.open((file_name_prefix + "_clientdata").c_str());
+  fs_client << "seq_no " << "nonce " << "timestamp " << std::endl;
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {
-    fs << it->seq_no() << ' ' << it->nonce()
-       << ' ' << it->timestamp() << std::endl;
+    fs_client << it->seq_no() << ' ' << it->nonce()
+              << ' ' << it->timestamp() << std::endl;
   }
-  fs.close();
-
-
+  fs_client.close();
+  // log the server data
+  std::ofstream fs_server;
+  fs_server.open((file_name_prefix + "_serverdata").c_str());
+  fs_server << "seq_no " << "nonce " << "timestamp " << std::endl;
+  #ifdef USE_WEB100
+  if (test_socket->type() == SOCKETTYPE_TCP) {
+    for (uint32_t i=0; i < growth_generator.packets_sent(); ++i) {
+      fs_server << i << ' ' << growth_generator.nonce()[i]
+                << ' ' << growth_generator.timestamps()[i] << std::endl;
+    }
+  }
+  #endif
+  for (uint32_t i=0; i < generator.packets_sent(); ++i) {
+    fs_server << i << ' ' << generator.nonce()[i]
+              << ' ' << generator.timestamps()[i] << std::endl;
+  }
+  fs_server.close();
+*/
   
   std::cout << "Done CBR" << std::endl;
   return test_result;
