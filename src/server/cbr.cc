@@ -104,10 +104,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
                                      static_cast<uint64_t>(1));
 
   // calculate the maximum test time
-  uint32_t max_test_time_sec = TEST_BASE_SEC +
-                               TEST_INCR_SEC_PER_MB * config.cbr_kb_s / 1000;
-  uint32_t max_cwnd_time_sec = CWND_BASE_SEC +
-                               CWND_INCR_SEC_PER_MB * config.cbr_kb_s / 1000;
+  uint32_t max_test_time_sec =
+    std::min(TEST_BASE_SEC + TEST_INCR_SEC_PER_MB * config.cbr_kb_s / 1000,
+             static_cast<unsigned>(TEST_MAX_SEC));
+  uint32_t max_cwnd_time_sec =
+    std::min(CWND_BASE_SEC + CWND_INCR_SEC_PER_MB * config.cbr_kb_s / 1000,
+             static_cast<unsigned>(CWND_MAX_SEC));
   uint32_t max_test_pkt = max_test_time_sec * chunks_per_sec;
   uint32_t max_cwnd_pkt = max_cwnd_time_sec * chunks_per_sec;
 
@@ -164,10 +166,13 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     }
     std::cout << "growing phase done" << std::endl;
 
+    uint32_t growth_rtt = growth_connection.SampleRTT();
     while (growth_connection.SndNxt() - growth_connection.SndUna()
-            >= target_pipe_size_bytes / 2) {
+            >= std::max(target_pipe_size_bytes / 2, static_cast<uint64_t>(1))) {
+      growth_connection.Stop();
+      NanoSleepX(growth_rtt / MS_PER_SEC, (growth_rtt % MS_PER_SEC) * 1000000);
     }
-    std::cout << "done spinning" << std::endl;
+    std::cout << "done draining" << std::endl;
   }
   #endif
 
@@ -267,7 +272,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Sleep statistics
   std::cout << "Sleep missed" << std::endl;
   std::cout << "maximum: " << missed_max << std::endl;
-  std::cout << "average: " << (missed_sleep == 0? 0 : missed_total / missed_sleep) << std::endl;
+  std::cout << "average: "
+            << (missed_sleep == 0? 0 : missed_total / missed_sleep)
+            << std::endl;
   std::cout << "count: " << missed_sleep << std::endl;
 
   // Receive the data collected by the client
@@ -285,15 +292,18 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::vector<uint8_t> bytes_buffer;
   uint32_t total_recv_bytes = 0;
   while (total_recv_bytes < data_size_bytes) {
+    uint32_t num_to_receive = std::min(static_cast<unsigned>(500000),
+                                       data_size_bytes - total_recv_bytes);
     mlab::Packet recv_pkt =
-      ctrl_socket->Receive(data_size_bytes - total_recv_bytes, &num_bytes);
-    if (num_bytes < 0)
+      ctrl_socket->Receive(num_to_receive, &num_bytes);
+    if (num_bytes <= 0)
       return RESULT_ERROR;
     bytes_buffer.insert(bytes_buffer.end(),
                         recv_pkt.buffer(),
                         recv_pkt.buffer() + num_bytes);
     total_recv_bytes += num_bytes;
   }
+  std::cout << "data collected" << std::endl;
   const TrafficData* recv_buffer =
       reinterpret_cast<const TrafficData*>(&bytes_buffer[0]);
   for (uint32_t i=0; i < data_size_obj; ++i) {

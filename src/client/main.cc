@@ -118,9 +118,9 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
     // if failed to receive ready with loop, terminate the test
     assert(count <= 4);
   } 
-  assert(setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
-                    (const char*) &timeout, sizeof(timeout))
-                    != -1);
+  set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
+                    (const char*) &timeout, sizeof(timeout));
+  assert(set_result != -1);
 
   // Expect test to start now. Server drives the test by picking a CBR and
   // sending data at that rate while counting losses. All we need to do is
@@ -197,11 +197,14 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   std::cout << "Sending collected data..." << std::endl;
   uint32_t offset = 0;
+  const char* send_buffer_ptr = reinterpret_cast<const char*>(&send_buffer[0]);
   while (offset < data_size_bytes) {
+    uint32_t num_to_send = std::min(static_cast<unsigned>(500000),
+                                    data_size_bytes - offset);
     ctrl_socket->Send(
-      mlab::Packet(reinterpret_cast<const char*>(&send_buffer[offset]),
-                   data_size_bytes - offset),
-      &num_bytes);
+      mlab::Packet(&send_buffer_ptr[offset], num_to_send),
+                   &num_bytes);
+    assert(num_bytes >= 0);
     offset += num_bytes; 
   }
 

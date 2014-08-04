@@ -16,7 +16,7 @@ StatTest::StatTest(uint64_t target_run_length, double alpha, double beta) {
 
 void StatTest::init(uint64_t target_run_length, double alpha, double beta) {
   double p0 = 1.0 / target_run_length;
-  double p1 = 1.0 / (target_run_length / 4.0);
+  double p1 = std::min(1.0 / (target_run_length / 4.0), 0.99);
   double k = log(p1 * (1 - p0) / (p0 * (1 - p1)));
   s = log((1-p0) / (1-p1)) / k;
   h1 = log((1-alpha) / beta) / k;
