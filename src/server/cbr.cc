@@ -219,8 +219,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     
     // figure out the start time for the next chunk
     uint64_t next_start = outer_start_time +
-                          (generator.packets_sent() + burst_size_pkt) *
-                          time_per_chunk_ns;
+                          generator.packets_sent() * time_per_chunk_ns;
     uint64_t curr_time = GetTimeNS();
     int32_t left_over_ns = next_start - curr_time;
     if (left_over_ns > 0) {
@@ -345,6 +344,17 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // determine the result of the test
   if (test_socket->type() == SOCKETTYPE_UDP)
     test_result = tester.test_result(generator.packets_sent(), lost_packets);
+
+  // print the result, and send it to the client
+  if (test_result == RESULT_ERROR)
+    std::cerr << kResultStr[test_result] << "\n";
+  else
+    std::cout << kResultStr[test_result] << "\n";
+
+  if (!ctrl_socket->Send(mlab::Packet(htonl(test_result)), &num_bytes)) {
+    std::cout << "failed to send result" << std::endl;
+    return RESULT_ERROR;
+  }
 
 
 /*
