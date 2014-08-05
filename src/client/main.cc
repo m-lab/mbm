@@ -135,15 +135,29 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
               << strerror(errno) << "\n";
     return RESULT_ERROR;
   }
+  const uint32_t max_num_pkt = ntohl(
+      ctrl_socket->ReceiveX(sizeof(max_num_pkt), &bytes_read).as<uint32_t>());
+  if (bytes_read < 0
+      || static_cast<unsigned>(bytes_read) < sizeof(max_num_pkt)) {
+    std::cerr << "Something went wrong. The server might have died: "
+              << strerror(errno) << "\n";
+    return RESULT_ERROR;
+  }
+  const uint32_t max_time_sec = ntohl(
+      ctrl_socket->ReceiveX(sizeof(max_time_sec), &bytes_read).as<uint32_t>());
+  if (bytes_read < 0
+      || static_cast<unsigned>(bytes_read) < sizeof(max_time_sec)) {
+    std::cerr << "Something went wrong. The server might have died: "
+              << strerror(errno) << "\n";
+    return RESULT_ERROR;
+  }
 
-  // test traffic
+  // Log the maximum time and traffic volume
+  std::cout << "receiving at most " << max_num_pkt << " packets ("
+            << max_num_pkt * chunk_len << " bytes)\n";
+  std::cout << "the process takes at most " << max_time_sec << " seconds\n";
+
   std::vector<TrafficData> data_collected;
-
-  // std::cout << "expecting at most " <<  MAX_PACKETS_CWND
-            // << " packets cwnd control traffic\n";
-  // std::cout << "expecting at most " <<  MAX_PACKETS_TEST
-            // << " packets test traffic\n";
-
   fd_set fds; 
   while (true) {
     FD_ZERO(&fds);

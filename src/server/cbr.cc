@@ -86,9 +86,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   if (test_socket->type() == SOCKETTYPE_TCP) {
     bytes_per_chunk = std::min(config.mss_bytes, tcp_mss);
   }
-  ssize_t num_bytes;
-  if (!ctrl_socket->Send(mlab::Packet(htonl(bytes_per_chunk)), &num_bytes))
-    return RESULT_ERROR;
 
   // calculate how many chunks per second we want to send
   uint32_t chunks_per_sec = bytes_per_sec / bytes_per_chunk;
@@ -110,6 +107,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t max_cwnd_time_sec =
     std::min(CWND_BASE_SEC + CWND_INCR_SEC_PER_MB * config.cbr_kb_s / 1000,
              static_cast<unsigned>(CWND_MAX_SEC));
+  if (test_socket->type() == SOCKETTYPE_UDP)
+    max_cwnd_time_sec = 0;
   uint32_t max_test_pkt = max_test_time_sec * chunks_per_sec;
   uint32_t max_cwnd_pkt = max_cwnd_time_sec * chunks_per_sec;
 
@@ -122,6 +121,17 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
                                                         config.mss_bytes);
   uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
   uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
+
+  // Sending chunk length and traffic volume to client
+  ssize_t num_bytes;
+  if (!ctrl_socket->Send(mlab::Packet(htonl(bytes_per_chunk)), &num_bytes))
+    return RESULT_ERROR;
+  if (!ctrl_socket->Send(mlab::Packet(
+        htonl(max_test_pkt + max_cwnd_pkt)), &num_bytes))
+    return RESULT_ERROR;
+  if (!ctrl_socket->Send(mlab::Packet(
+        htonl(max_test_time_sec + max_cwnd_time_sec)), &num_bytes))
+    return RESULT_ERROR;
 
   // traffic pattern log
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
