@@ -44,6 +44,7 @@ DEFINE_validator(port, ValidatePort);
 
 namespace mbm {
 bool used_port[NUM_PORTS];
+uint16_t next_port = 0;
 pthread_mutex_t used_port_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct ServerConfig {
@@ -62,11 +63,12 @@ uint16_t GetAvailablePort() {
   // pick the first.
   uint16_t mbm_port = 0;
   for (; mbm_port < NUM_PORTS; ++mbm_port) {
-    if (!used_port[mbm_port])
+    if (!used_port[next_port % NUM_PORTS])
       break;
+    next_port = (next_port + 1) % NUM_PORTS;
   }
   assert(mbm_port != NUM_PORTS);
-  return mbm_port;
+  return next_port++;
 }
 
 
@@ -117,7 +119,7 @@ void* ServerThread(void* server_config_data) {
     // create listen socket, if error occurs pick another port
     // if error occurs more than 3 times terminate the test
     mlab::ListenSocket* listen_socket = NULL;
-    for (int count = 0; count < 3; ++count) {
+    for (int count = 0; count < NUM_PORTS_TO_TRY; ++count) {
       listen_socket = mlab::ListenSocket::Create(port, config.socket_type);
       if (listen_socket) break;
 
@@ -176,18 +178,7 @@ void* ServerThread(void* server_config_data) {
       break;
     }
     
-    Result result = RunCBR(test_socket.get(),
-                           ctrl_socket,
-                           config);
-    if (result == RESULT_ERROR)
-      std::cerr << kResultStr[result] << "\n";
-    else
-      std::cout << kResultStr[result] << "\n";
-
-    if (!ctrl_socket->Send(mlab::Packet(htonl(result)), &num_bytes)) {
-      std::cout << "failed to send result" << std::endl;
-      break;
-    }
+    RunCBR(test_socket.get(), ctrl_socket, config);
   } while(false);
 
   pthread_mutex_lock(&used_port_mutex);

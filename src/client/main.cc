@@ -71,7 +71,7 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
 
   // set timeout for control socket
   int set_result;
-  timeval timeout = {5, 0};
+  timeval timeout = {DEFAULT_TIMEO_SEC, DEFAULT_TIMEO_NS};
   set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                           (const char*) &timeout, sizeof(timeout));
   assert(set_result != -1);
@@ -104,19 +104,21 @@ Result Run(SocketType socket_type, int rate, int rtt, int mss) {
   assert(set_result != -1);
 
   // set timeout to be 3 times rtt for the ready-ack loop
-  timeval temp_timeout = {3 * rtt / 1000, (3 * rtt % 1000) * 1000};
+  timeval temp_timeout = {(3 * rtt) / MS_PER_SEC,
+                          ((3 * rtt) % MS_PER_SEC) * 1000};
   set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                           (const char*) &temp_timeout,
                           sizeof(temp_timeout));
   assert(set_result != -1);
+
   // send ready on the test channel and wait for ready on the ctrl channel
   ssize_t num_bytes;
-  for(int count = 0; count < 5; ++count) {
+  for(int count = 0; count < NUM_READY_RETRANS; ++count) {
     mbm_socket->SendOrDie(mlab::Packet(READY, strlen(READY)));
     if (ctrl_socket->Receive(strlen(READY), &num_bytes).str() == READY)
       break;
     // if failed to receive ready with loop, terminate the test
-    assert(count <= 4);
+    assert(count+1 <= NUM_READY_RETRANS);
   } 
   set_result = setsockopt(ctrl_socket->raw(), SOL_SOCKET, SO_RCVTIMEO, 
                     (const char*) &timeout, sizeof(timeout));

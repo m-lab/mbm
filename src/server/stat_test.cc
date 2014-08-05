@@ -4,10 +4,12 @@
 
 #include <iostream>
 
+#include "common/constants.h"
+
 namespace mbm {
 
 StatTest::StatTest(uint64_t target_run_length) {
-  init(target_run_length, 0.05, 0.05);
+  init(target_run_length, DEFAULT_TYPE_I_ERR, DEFAULT_TYPE_II_ERR);
 }
 
 StatTest::StatTest(uint64_t target_run_length, double alpha, double beta) {

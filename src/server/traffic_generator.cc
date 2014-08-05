@@ -27,6 +27,8 @@ TrafficGenerator::TrafficGenerator(const mlab::AcceptedSocket *test_socket,
       packets_sent_(0),
       last_percent_(0),
       buffer_(std::vector<char>(bytes_per_chunk,'x')) {
+  nonce_.reserve(max_pkt);
+  timestamps_.reserve(max_pkt);
 }
 
 bool TrafficGenerator::Send(uint32_t num_chunks, ssize_t& num_bytes){

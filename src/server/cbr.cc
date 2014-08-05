@@ -113,6 +113,16 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint32_t max_test_pkt = max_test_time_sec * chunks_per_sec;
   uint32_t max_cwnd_pkt = max_cwnd_time_sec * chunks_per_sec;
 
+  // calculate the target parameters
+  uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
+                                                      config.rtt_ms,
+                                                      config.mss_bytes);
+  uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
+                                                        config.rtt_ms,
+                                                        config.mss_bytes);
+  uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
+  uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
+
   // traffic pattern log
   std::cout << "  tcp_mss: " << tcp_mss << "\n";
   std::cout << "  bytes_per_sec: " << bytes_per_sec << "\n";
@@ -121,6 +131,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "  time_per_chunk_ns: " << time_per_chunk_ns << "\n";
   std::cout << "  time_per_chunk_sec: " << time_per_chunk_sec << "\n";
   std::cout << "  burst_size_pkt: " << burst_size_pkt << "\n";
+  std::cout << "  target_pipe_size_pkt: " << target_pipe_size << "\n";
+  std::cout << "  target_run_length_pkt: " << target_run_length << "\n";
 
   uint32_t cwnd_bytes_total = 0;
   if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -136,19 +148,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Maximum time for the traffic
   std::cout << "  test traffic should take at most "
             << max_test_time_sec << " seconds\n";
-
-  // Model Computation
-  uint64_t target_pipe_size = model::target_pipe_size(config.cbr_kb_s,
-                                                      config.rtt_ms,
-                                                      config.mss_bytes);
-  uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
-                                                        config.rtt_ms,
-                                                        config.mss_bytes);
-  uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
-  uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
+  std::cout << "  test traffic should take at most "
+            << max_cwnd_time_sec << " seconds\n";
 
   #ifdef USE_WEB100
   TrafficGenerator growth_generator(test_socket, bytes_per_chunk, max_cwnd_pkt);
+  uint64_t growth_start_time = GetTimeNS();
   if (test_socket->type() == SOCKETTYPE_TCP) {
     web100::Connection growth_connection(test_socket);
     growth_connection.Start();
@@ -162,15 +167,22 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       if (!growth_generator.Send(target_pipe_size)) {
         return RESULT_ERROR;
       }
+      if (GetTimeNS() > growth_start_time
+          + static_cast<uint64_t>(max_cwnd_time_sec) * NS_PER_SEC) {
+        std::cout << "max time reached" << std::endl;
+        break;
+      }
       NanoSleepX( rtt_ns / NS_PER_SEC, rtt_ns % NS_PER_SEC);
     }
+    std::cout << "loss during growth: "
+              << growth_connection.PacketRetransCount() << std::endl;
     std::cout << "growing phase done" << std::endl;
 
-    uint32_t growth_rtt = growth_connection.SampleRTT();
+    // uint32_t growth_rtt = growth_connection.SampleRTT();
     while (growth_connection.SndNxt() - growth_connection.SndUna()
             >= std::max(target_pipe_size_bytes / 2, static_cast<uint64_t>(1))) {
       growth_connection.Stop();
-      NanoSleepX(growth_rtt / MS_PER_SEC, (growth_rtt % MS_PER_SEC) * 1000000);
+      // NanoSleepX(growth_rtt / MS_PER_SEC, (growth_rtt % MS_PER_SEC) * 1000000);
     }
     std::cout << "done draining" << std::endl;
   }
@@ -187,6 +199,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   #endif
 
   Result test_result = RESULT_INCONCLUSIVE;
+  bool result_set = false;
   uint64_t outer_start_time = GetTimeNS();
   uint64_t missed_total = 0;
   uint64_t missed_max = 0;
@@ -208,9 +221,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
         test_result = tester.test_result(n, loss);
         if (test_result == RESULT_PASS) {
           std::cout << "passed SPRT" << std::endl;
+          result_set = true;
           break;
         } else if (test_result == RESULT_FAIL) {
           std::cout << "failed SPRT" << std::endl;
+          result_set = true;
           break;
         }
       }
@@ -232,6 +247,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       if (missed_total > (curr_time - outer_start_time) / 2) {
         // Inconclusive because the test failed to generate the traffic pattern
         test_result = RESULT_INCONCLUSIVE;
+        result_set = true;
         break;
       }
     }
@@ -291,10 +307,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::vector<uint8_t> bytes_buffer;
   uint32_t total_recv_bytes = 0;
   while (total_recv_bytes < data_size_bytes) {
-    uint32_t num_to_receive = std::min(static_cast<unsigned>(500000),
+    uint32_t num_to_receive = std::min(static_cast<unsigned>(MAX_RECV_BYTES),
                                        data_size_bytes - total_recv_bytes);
-    mlab::Packet recv_pkt =
-      ctrl_socket->Receive(num_to_receive, &num_bytes);
+    mlab::Packet recv_pkt = ctrl_socket->Receive(num_to_receive, &num_bytes);
     if (num_bytes <= 0)
       return RESULT_ERROR;
     bytes_buffer.insert(bytes_buffer.end(),
@@ -342,7 +357,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
 
   // determine the result of the test
-  if (test_socket->type() == SOCKETTYPE_UDP)
+  if (test_socket->type() == SOCKETTYPE_UDP && !result_set)
     test_result = tester.test_result(generator.packets_sent(), lost_packets);
 
   // print the result, and send it to the client
