@@ -11,11 +11,13 @@
 #include <string.h>
 #include <math.h>
 #include <signal.h>
+#include <time.h>
 
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <boost/filesystem.hpp>
 
 #include "common/config.h"
 #include "common/constants.h"
@@ -156,10 +158,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
             << " test packets (" << test_bytes_total << " bytes)\n";
 
   // Maximum time for the traffic
+  std::cout << "  cwnd traffic should take at most "
+            << max_cwnd_time_sec << " seconds\n";
   std::cout << "  test traffic should take at most "
             << max_test_time_sec << " seconds\n";
-  std::cout << "  test traffic should take at most "
-            << max_cwnd_time_sec << " seconds\n";
 
   #ifdef USE_WEB100
   TrafficGenerator growth_generator(test_socket, bytes_per_chunk, max_cwnd_pkt);
@@ -382,9 +384,23 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   }
 
 
-/*
-  // generate the log-file name
-  std::string file_name_prefix = GetTestTimeStr();
+  
+  // setup log file directory
+  struct timespec test_time;
+  clock_gettime(CLOCK_REALTIME, &test_time);
+  struct tm* time_tm = gmtime(&test_time.tv_sec);
+  char buffer[100];
+  strftime(buffer, sizeof(buffer), "%Y/%m/%d", time_tm);
+
+  boost::system::error_code ec;
+  boost::filesystem::create_directories(buffer, ec);
+
+  // generate log file name
+  strftime(buffer, sizeof(buffer), "%Y/%m/%d/%Y%m%dT%T.", time_tm);
+  std::stringstream ss;
+  ss << buffer << test_time.tv_nsec << 'Z';
+  std::string file_name_prefix = ss.str();
+  
 
   // log the test configuration and summary data
   std::ofstream fs_test;
@@ -443,7 +459,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
               << ' ' << generator.timestamps()[i] << std::endl;
   }
   fs_server.close();
-*/
   
   std::cout << "Done CBR" << std::endl;
   return test_result;
