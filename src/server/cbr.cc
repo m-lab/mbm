@@ -35,6 +35,22 @@
 #endif
 
 DECLARE_bool(verbose);
+DEFINE_string(prefix, ".", "The root of the log directory");
+
+namespace {
+bool ValidatePrefix(const char* flagname, const std::string& value) {
+  boost::system::error_code ec;
+  if (boost::filesystem::is_directory(value, ec)) {
+    return true;
+  } else {
+    std::cerr << "Invalid value for --" << flagname << ": " << value << std::endl;
+    return false;
+  }
+}
+
+const bool prefix_validator = 
+    gflags::RegisterFlagValidator(&FLAGS_prefix, &ValidatePrefix);
+} // namespace
 
 namespace mbm {
 
@@ -390,14 +406,15 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   clock_gettime(CLOCK_REALTIME, &test_time);
   struct tm* time_tm = gmtime(&test_time.tv_sec);
   char buffer[100];
-  strftime(buffer, sizeof(buffer), "%Y/%m/%d", time_tm);
+  strftime(buffer, sizeof(buffer), "/%Y/%m/%d/", time_tm);
+  std::stringstream ss;
+  ss << FLAGS_prefix << buffer;
 
   boost::system::error_code ec;
-  boost::filesystem::create_directories(buffer, ec);
+  boost::filesystem::create_directories(ss.str(), ec);
 
   // generate log file name
-  strftime(buffer, sizeof(buffer), "%Y/%m/%d/%Y%m%dT%T.", time_tm);
-  std::stringstream ss;
+  strftime(buffer, sizeof(buffer), "%Y%m%dT%T.", time_tm);
   ss << buffer << test_time.tv_nsec << 'Z';
   std::string file_name_prefix = ss.str();
   
