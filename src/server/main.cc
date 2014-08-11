@@ -202,10 +202,6 @@ int main(int argc, char* argv[]) {
   gflags::SetVersionString(MBM_VERSION);
   srand(time(NULL));
 
-#ifdef USE_WEB100
-  web100::Initialize();
-#endif
-
   for (int i = 0; i < NUM_PORTS; ++i)
     used_port[i] = false;
 
@@ -232,10 +228,6 @@ int main(int argc, char* argv[]) {
       return 1;
     }
   }
-
-#ifdef USE_WEB100
-  web100::Shutdown();
-#endif  // USE_WEB100
 
   pthread_exit(NULL);
   return 0;

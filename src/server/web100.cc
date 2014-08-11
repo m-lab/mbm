@@ -17,24 +17,28 @@ extern "C" {
 
 namespace web100 {
 
-web100_agent* agent = NULL;
-
-void Initialize() {
-  agent = web100_attach(WEB100_AGENT_TYPE_LOCAL, NULL);
-  if (agent == NULL) {
+Agent::Agent() {
+  agent_ = web100_attach(WEB100_AGENT_TYPE_LOCAL, NULL);
+  if (agent_ == NULL) {
     web100_perror("web100");
     perror("sys");
     assert(false);
   }
 }
 
-void Shutdown() {
-  web100_detach(agent);
+Agent::~Agent() {
+  web100_detach(agent_);
 }
+
+web100_agent* Agent::get() {
+  return agent_;
+}
+
 
 class Connection::Var {
  public:
-  explicit Var(const std::string& name, web100_connection* connection)
+  explicit Var(const std::string& name, web100_connection* connection,
+               web100_agent* agent)
       : var_(NULL),
         group_(NULL),
         before_(NULL),
@@ -116,27 +120,28 @@ class Connection::Var {
 
   bool started;
   bool stopped;
+
 };
 
 
-Connection::Connection(const mlab::Socket* socket):
+Connection::Connection(const mlab::Socket* socket, web100_agent* agent):
     socket_(socket){
   if (socket_->type() == SOCKETTYPE_TCP) {
-    web100_connection* connection =
-        web100_connection_from_socket(agent, socket->raw());
+    //web100_connection* connection =
+    connection = web100_connection_from_socket(agent, socket->raw());
     if (connection == NULL) {
       web100_perror("web100");
       perror("sys");
       assert(false);
     }
 
-    pktsretrans = new Var("PktsRetrans", connection);
-    curretxqueue = new Var("CurRetxQueue", connection);
-    curappwqueue = new Var("CurAppWQueue", connection);
-    samplertt = new Var("SampleRTT", connection);
-    curcwnd = new Var("CurCwnd", connection);
-    snduna = new Var("SndUna", connection);
-    sndnxt = new Var("SndNxt", connection);
+    pktsretrans = new Var("PktsRetrans", connection, agent);
+    curretxqueue = new Var("CurRetxQueue", connection, agent);
+    curappwqueue = new Var("CurAppWQueue", connection, agent);
+    samplertt = new Var("SampleRTT", connection, agent);
+    curcwnd = new Var("CurCwnd", connection, agent);
+    snduna = new Var("SndUna", connection, agent);
+    sndnxt = new Var("SndNxt", connection, agent);
   }
 }
 

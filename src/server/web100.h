@@ -6,6 +6,9 @@
 #endif  // !USE_WEB100
 
 #include <stdint.h>
+extern "C" {
+#include <web100/web100.h>
+}
 
 namespace mlab {
 class Socket;
@@ -13,13 +16,20 @@ class Socket;
 
 namespace web100 {
 
-void Initialize();
-void Shutdown();
+class Agent {
+  public: 
+    Agent();
+    ~Agent();
+    web100_agent* get();
+
+  private:
+    web100_agent* agent_;
+};
 
 class Connection {
   public:
     Connection() {};
-    Connection(const mlab::Socket* socket);
+    Connection(const mlab::Socket* socket, web100_agent* agent);
     uint32_t PacketRetransCount();
     uint32_t RetransmitQueueSize();
     uint32_t ApplicationWriteQueueSize();
@@ -27,6 +37,7 @@ class Connection {
     uint32_t CurCwnd();
     uint32_t SndUna();
     uint32_t SndNxt();
+    int id();
     void Start();
     void Stop();
     ~Connection();
@@ -34,6 +45,7 @@ class Connection {
   private:
     class Var;
     const mlab::Socket* socket_;
+    web100_connection* connection;
     Var* pktsretrans;
     Var* curretxqueue;
     Var* curappwqueue;
@@ -41,7 +53,6 @@ class Connection {
     Var* curcwnd;
     Var* snduna;
     Var* sndnxt;
-    
 };
 
 

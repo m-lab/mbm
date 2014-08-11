@@ -64,6 +64,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // Ignore SIGPIPE, so that write error would be non-fatal
   signal(SIGPIPE, SIG_IGN);
+  web100::Agent agent;
 
   uint32_t tcp_mss = config.mss_bytes;
   socklen_t mss_len = sizeof(tcp_mss);
@@ -115,8 +116,9 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   double time_per_chunk_sec = 1.0 / chunks_per_sec;
 
   // calculate the burst size for sleep time to be greater than 500us
+  // if the burst size from config is greater, use the config burst size
   uint32_t burst_size_pkt = std::max(1000000 / time_per_chunk_ns,
-                                     static_cast<uint64_t>(1));
+                                     static_cast<uint64_t>(config.burst_size));
 
   // calculate the maximum test time
   uint32_t max_test_time_sec =
@@ -183,9 +185,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   TrafficGenerator growth_generator(test_socket, bytes_per_chunk, max_cwnd_pkt);
   uint64_t growth_start_time = GetTimeNS();
   if (test_socket->type() == SOCKETTYPE_TCP) {
-    web100::Connection growth_connection(test_socket);
+    web100::Connection growth_connection(test_socket, agent.get());
     growth_connection.Start();
-    std::cout << "start growing phase" << std::endl;
     while (growth_generator.packets_sent() < max_cwnd_pkt) {
       growth_connection.Stop();
       if (growth_connection.CurCwnd() >= target_pipe_size_bytes) {
@@ -221,9 +222,10 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   TrafficGenerator generator(test_socket, bytes_per_chunk, max_test_pkt);
 
   #ifdef USE_WEB100
-  web100::Connection test_connection(test_socket);
-  if (test_socket->type() == SOCKETTYPE_TCP)
+  web100::Connection test_connection(test_socket, agent.get());
+  if (test_socket->type() == SOCKETTYPE_TCP) {
     test_connection.Start();
+  }
   #endif
 
   Result test_result = RESULT_INCONCLUSIVE;
@@ -405,7 +407,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   struct timespec test_time;
   clock_gettime(CLOCK_REALTIME, &test_time);
   struct tm* time_tm = gmtime(&test_time.tv_sec);
-  char buffer[100];
+  char buffer[20];
   strftime(buffer, sizeof(buffer), "/%Y/%m/%d/", time_tm);
   std::stringstream ss;
   ss << FLAGS_prefix << buffer;
