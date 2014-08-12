@@ -54,6 +54,33 @@ const bool prefix_validator =
 
 namespace mbm {
 
+int addr_to_string(sockaddr_storage* addr, char* dst, socklen_t size) {
+  switch (addr->ss_family) { 
+    case AF_INET: {
+        sockaddr_in* addr_in = reinterpret_cast<sockaddr_in*>(addr);
+        if (!inet_ntop(addr_in->sin_family, &(addr_in->sin_addr), dst, size)) {
+          std::cout << "err occured when reading address" << std::endl;
+          perror("sys");
+          return -1;
+        }
+      }
+      break;
+    case AF_INET6: {
+        sockaddr_in6* addr_in = reinterpret_cast<sockaddr_in6*>(addr);
+        if (!inet_ntop(addr_in->sin6_family, &(addr_in->sin6_addr), dst, size)) {
+          std::cout << "err occured when reading address" << std::endl;
+          perror("sys");
+          return -1;
+        }
+      }
+      break;
+    default: 
+      std::cout << "unknown address family" << std::endl;
+      return -1;
+  }
+  return 0;
+}
+
 Result RunCBR(const mlab::AcceptedSocket* test_socket,
               const mlab::AcceptedSocket* ctrl_socket,
               const Config& config) {
@@ -64,11 +91,37 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
 
   // Ignore SIGPIPE, so that write error would be non-fatal
   signal(SIGPIPE, SIG_IGN);
-  web100::Agent agent;
 
   uint32_t tcp_mss = config.mss_bytes;
   socklen_t mss_len = sizeof(tcp_mss);
 
+  // get server and client ip address
+  sockaddr_storage server_addr; 
+  sockaddr_storage client_addr; 
+  socklen_t addrlen = sizeof(server_addr);
+  if (getsockname(ctrl_socket->raw(), reinterpret_cast<sockaddr*>(&server_addr),
+              &addrlen) == -1) {
+    std::cout << "err occured when reading socket name" << std::endl;
+    perror("sys");
+    return RESULT_ERROR;
+  }
+  addrlen = sizeof(client_addr);
+  if (getpeername(ctrl_socket->raw(), reinterpret_cast<sockaddr*>(&client_addr),
+              &addrlen) == -1) {
+    std::cout << "err occured when reading peer name" << std::endl;
+    perror("sys");
+    return RESULT_ERROR;
+  }
+
+  char server_str[INET6_ADDRSTRLEN];
+  char client_str[INET6_ADDRSTRLEN];
+  if (addr_to_string(&server_addr, server_str, sizeof(server_str)) == -1) {
+  }
+  if (addr_to_string(&client_addr, client_str, sizeof(client_str)) == -1) {
+  }
+  std::cout << "server ip addr: " << server_str << std::endl;
+  std::cout << "client ip addr: " << client_str << std::endl;
+  
   switch (test_socket->type()) {
     case SOCKETTYPE_TCP:
       if (getsockopt(test_socket->raw(), IPPROTO_TCP, TCP_MAXSEG,
@@ -180,6 +233,11 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
             << max_cwnd_time_sec << " seconds\n";
   std::cout << "  test traffic should take at most "
             << max_test_time_sec << " seconds\n";
+
+  // Initialize the web100 agent
+  #ifdef USE_WEB100
+  web100::Agent agent;
+  #endif // USE_WEB100
 
   #ifdef USE_WEB100
   TrafficGenerator growth_generator(test_socket, bytes_per_chunk, max_cwnd_pkt);
@@ -295,7 +353,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     return RESULT_ERROR;
 
   uint32_t lost_packets = 0;
-#ifdef USE_WEB100
+  #ifdef USE_WEB100
   // Traffic statistics from web100
   uint32_t application_write_queue = 0;
   uint32_t retransmit_queue = 0;
@@ -308,7 +366,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     retransmit_queue = test_connection.RetransmitQueueSize();
     rtt_sec = static_cast<double>(test_connection.SampleRTT()) / MS_PER_SEC;
   }
-#endif
+  #endif
 
   // Observed data rates
   double send_rate = (generator.total_bytes_sent() * 8) / delta_time_sec;
@@ -365,7 +423,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   std::cout << "send rate: " << send_rate << " b/sec ("
             << send_rate_delta_percent << "% of target)\n";
 
-#ifdef USE_WEB100
+  #ifdef USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
     std::cout << "  lost: " << lost_packets << "\n";
     std::cout << "  write queue: " << application_write_queue << "\n";
@@ -381,7 +439,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
       }
     }
   }
-#endif
+  #endif
   if (test_socket->type() == SOCKETTYPE_UDP) {
     std::cout << "  lost: " << lost_packets << "\n";
   }
@@ -419,11 +477,12 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   strftime(buffer, sizeof(buffer), "%Y%m%dT%T.", time_tm);
   ss << buffer << test_time.tv_nsec << 'Z';
   std::string file_name_prefix = ss.str();
-  
 
   // log the test configuration and summary data
   std::ofstream fs_test;
   fs_test.open((file_name_prefix + "_testdata").c_str());
+  fs_test << "server_ip_addr: " << server_str << std::endl;
+  fs_test << "client_ip_addr: " << client_str << std::endl;
   fs_test << "socket_type "
           << (test_socket->type() == SOCKETTYPE_TCP? "tcp": "udp") << std::endl;
   fs_test << "target_rate_kb_s " << config.cbr_kb_s << std::endl;
