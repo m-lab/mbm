@@ -357,6 +357,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // Traffic statistics from web100
   uint32_t application_write_queue = 0;
   uint32_t retransmit_queue = 0;
+  uint32_t rtt_ms = 0;
   double rtt_sec = 0.0;
 
   if (test_socket->type() == SOCKETTYPE_TCP) {
@@ -364,7 +365,8 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
     lost_packets = test_connection.PacketRetransCount();
     application_write_queue = test_connection.ApplicationWriteQueueSize();
     retransmit_queue = test_connection.RetransmitQueueSize();
-    rtt_sec = static_cast<double>(test_connection.SampleRTT()) / MS_PER_SEC;
+    rtt_ms = test_connection.SampleRTT();
+    rtt_sec = static_cast<double>(rtt_ms) / MS_PER_SEC;
   }
   #endif
 
@@ -481,39 +483,41 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // log the test configuration and summary data
   std::ofstream fs_test;
   fs_test.open((file_name_prefix + "_testdata").c_str());
-  fs_test << "server_ip_addr: " << server_str << std::endl;
-  fs_test << "client_ip_addr: " << client_str << std::endl;
+  fs_test << "server_ip_addr " << server_str << std::endl;
+  fs_test << "client_ip_addr " << client_str << std::endl;
   fs_test << "socket_type "
           << (test_socket->type() == SOCKETTYPE_TCP? "tcp": "udp") << std::endl;
   fs_test << "target_rate_kb_s " << config.cbr_kb_s << std::endl;
   fs_test << "target_rtt_ms " << config.rtt_ms << std::endl;
-  fs_test << "target_mss_byytes " << config.mss_bytes << std::endl;
+  fs_test << "target_mss_bytes " << config.mss_bytes << std::endl;
   fs_test << "target_pipe_size_pkt " << target_pipe_size << std::endl;
   fs_test << "target_runlength_pkt " << target_run_length << std::endl;
   fs_test << "packet_size " << bytes_per_chunk << std::endl;
-  fs_test << "packets_per_sec " << time_per_chunk_sec << std::endl;
+  fs_test << "ns_per_packet " << time_per_chunk_ns << std::endl;
   fs_test << "packets_sent " << generator.packets_sent() << std::endl;
   fs_test << "bytes_sent " << generator.total_bytes_sent() << std::endl;
-  fs_test << "total_time_sec " << delta_time_sec << std::endl;
+  fs_test << "total_time_ns " << delta_time << std::endl;
   fs_test << "send_rate_bits_sec " << send_rate << std::endl;
   fs_test << "missed_sleep_count " << missed_sleep << std::endl;
   fs_test << "missed_sleep_maximum_ns " << missed_max << std::endl;
   fs_test << "missed_sleep_average_ns "
           << (missed_sleep == 0? 0 : missed_total / missed_sleep) << std::endl;
   fs_test << "packet_loss " << lost_packets << std::endl;
+  fs_test << "type_I_err " << DEFAULT_TYPE_I_ERR << std::endl;
+  fs_test << "type_II_err " << DEFAULT_TYPE_II_ERR << std::endl;
+  fs_test << "test_result " << kResultStr[test_result] << std::endl;
   #if USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
-    fs_test << "write_queue " << application_write_queue << std::endl;
-    fs_test << "retransmit_queue " << retransmit_queue << std::endl;
-    fs_test << "sample_rtt_sec " << rtt_sec << std::endl;
+    fs_test << "write_queue_at_end " << application_write_queue << std::endl;
+    fs_test << "retransmit_queue_at_end " << retransmit_queue << std::endl;
+    fs_test << "sample_rtt_ms " << rtt_ms << std::endl;
   }
   #endif
-  fs_test << "test_result " << kResultStr[test_result] << std::endl;
   fs_test.close();
   // log the client data
   std::ofstream fs_client;
   fs_client.open((file_name_prefix + "_clientdata").c_str());
-  fs_client << "seq_no " << "nonce " << "timestamp " << std::endl;
+  // seq_no, nonce and timestamp
   for (std::vector<TrafficData>::const_iterator it = client_data.begin();
        it != client_data.end(); ++it) {
     fs_client << it->seq_no() << ' ' << it->nonce()
@@ -523,7 +527,7 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   // log the server data
   std::ofstream fs_server;
   fs_server.open((file_name_prefix + "_serverdata").c_str());
-  fs_server << "seq_no " << "nonce " << "timestamp " << std::endl;
+  // seq_no, nonce and timestamp
   #ifdef USE_WEB100
   if (test_socket->type() == SOCKETTYPE_TCP) {
     for (uint32_t i=0; i < growth_generator.packets_sent(); ++i) {
