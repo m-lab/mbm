@@ -9,6 +9,7 @@ endif()
 project(mbm_server)
 
 find_package(Threads REQUIRED)
+find_package(Boost COMPONENTS filesystem REQUIRED)
 
 set(PROJECT_ROOT_DIR ${PROJECT_SOURCE_DIR}/../..)
 
@@ -22,7 +23,7 @@ set(GFLAGS_ROOT ${PROJECT_ROOT_DIR}/third_party/gflags)
 set(GTEST_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/gtest-1.7.0)
 set(JSONCPP_ROOT ${MLAB_LIBRARIES_ROOT}/third_party/json-cpp)
 
-set(CMAKE_CXX_FLAGS "-Wall -Werror -fPIC -fno-exceptions -fno-rtti")
+set(CMAKE_CXX_FLAGS "-Wall -Werror -fPIC -fno-rtti")
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -fno-strict-aliasing")
 
@@ -64,4 +65,6 @@ target_link_libraries(mbm_server
 	${MBM_WEB100_LIBRARIES}
 	json-cpp
 	gflags
+  ${Boost_FILESYSTEM_LIBRARY}
+  ${Boost_SYSTEM_LIBRARY}
 	${CMAKE_THREAD_LIBS_INIT})
