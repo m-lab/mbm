@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <cerrno>
 
 #include "common/constants.h"
 
@@ -21,7 +22,7 @@ uint64_t GetTimeNS() {
 }
 
 void NanoSleepX(uint64_t sec, uint64_t ns) {
-  struct timespec sleep_req = {sec, ns};
+  struct timespec sleep_req = {(__time_t)sec, (long)ns};
   struct timespec sleep_rem;
   int slept = nanosleep(&sleep_req, &sleep_rem);
   while (slept == -1) {
