@@ -12,7 +12,10 @@
 #include "common/constants.h"
 #include "common/time.h"
 #include "gflags/gflags.h"
+
+#ifdef USE_WEB100
 #include "server/web100.h"
+#endif  // !USE_WEB100
 
 DECLARE_bool(verbose);
 

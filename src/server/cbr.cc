@@ -48,8 +48,6 @@ bool ValidatePrefix(const char* flagname, const std::string& value) {
   }
 }
 
-const bool prefix_validator = 
-    gflags::RegisterFlagValidator(&FLAGS_prefix, &ValidatePrefix);
 } // namespace
 
 namespace mbm {
@@ -192,8 +190,6 @@ Result RunCBR(const mlab::AcceptedSocket* test_socket,
   uint64_t target_run_length = model::target_run_length(config.cbr_kb_s,
                                                         config.rtt_ms,
                                                         config.mss_bytes);
-  uint64_t target_pipe_size_bytes = target_pipe_size * config.mss_bytes;
-  uint64_t rtt_ns = config.rtt_ms * 1000 * 1000;
 
   // Sending chunk length and traffic volume to client
   ssize_t num_bytes;

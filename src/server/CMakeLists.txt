@@ -9,7 +9,7 @@ endif()
 project(mbm_server)
 
 find_package(Threads REQUIRED)
-find_package(Boost COMPONENTS filesystem REQUIRED)
+find_package(Boost COMPONENTS filesystem system REQUIRED)
 
 set(PROJECT_ROOT_DIR ${PROJECT_SOURCE_DIR}/../..)
 
